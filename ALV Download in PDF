@@ -11,13 +11,13 @@ FORM uc  USING a LIKE sy-ucomm
          lv_user_action TYPE i.
 
   DATA lv_spoolid TYPE tsp01_sp0r-rqid_char.
-  IF a = '&IC1'. " ++ added by pwc_satish dt:22.04.2019
+  IF a = '&IC1'. 
     lv_index = b-tabindex.
 
-    READ TABLE gt_excess INTO gs_excess INDEX lv_index.
+    READ TABLE gt_itab INTO var INDEX lv_index.
     IF sy-subrc = 0.
-      lv_sernr = gs_excess-sernr.
-      lv_matnr = gs_excess-matnr.
+      lv_sernr = var-sernr.
+      lv_matnr = var-matnr.
 
       CALL FUNCTION 'CONVERSION_EXIT_MATN1_INPUT'
         EXPORTING
@@ -331,7 +331,7 @@ FORM uc  USING a LIKE sy-ucomm
 *    IMPORTING
 *      out_parameters = lwa_params.
 *
-*  SUBMIT zpvrep_verification_process WITH SELECTION-TABLE li_slopt
+*  SUBMIT zres_verif_process WITH SELECTION-TABLE li_slopt
 *                                TO SAP-SPOOL
 *                                SPOOL PARAMETERS lwa_params
 *                                WITHOUT SPOOL DYNPRO
