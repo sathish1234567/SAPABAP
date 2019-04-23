@@ -1,0 +1,362 @@
+FORM uc  USING a LIKE sy-ucomm
+               b TYPE slis_selfield.
+  TYPE-POOLS slis.
+  DATA: lv_index TYPE sy-index,
+        lv_sernr TYPE gernr,
+        lv_matnr TYPE matnr,
+        mi_rqident       LIKE tsp01-rqident.
+  DATA : lv_filename TYPE string,
+         lv_path TYPE string,
+         lv_fullpath TYPE string,
+         lv_user_action TYPE i.
+
+  DATA lv_spoolid TYPE tsp01_sp0r-rqid_char.
+  IF a = '&IC1'. " ++ added by pwc_satish dt:22.04.2019
+    lv_index = b-tabindex.
+
+    READ TABLE gt_excess INTO gs_excess INDEX lv_index.
+    IF sy-subrc = 0.
+      lv_sernr = gs_excess-sernr.
+      lv_matnr = gs_excess-matnr.
+
+      CALL FUNCTION 'CONVERSION_EXIT_MATN1_INPUT'
+        EXPORTING
+          input  = lv_matnr
+        IMPORTING
+          output = lv_matnr.
+
+
+      CALL FUNCTION 'SERIAL_HISTORY'
+        EXPORTING
+          material = lv_matnr
+          serial   = lv_sernr.
+
+
+    ENDIF.
+  ELSEIF a = '%PDF'.
+*    submit the same program in background and store
+    TYPES: BEGIN OF ty_tsp01,
+          rqident   TYPE tsp01-rqident,           " spool number
+          rq2name TYPE tsp01-rq2name,           " Spool request: Suffix 2
+          rqcretime TYPE tsp01-rqcretime,         " User name
+          END OF ty_tsp01.
+    DATA: lv_jobcnt TYPE tbtcjob-jobcount,         " job number
+          lv_jobname TYPE tbtcjob-jobname.         " job name
+    DATA: lv_len TYPE i,
+        ls_param TYPE rsparams,                  " selection work area
+        ls_tsp01 TYPE ty_tsp01,                  " Spool Requests work area
+        lt_tsp01 TYPE STANDARD TABLE OF ty_tsp01, " Spool Requests internal table
+        lt_param TYPE rsparams_tt.                " Selection table
+
+    lv_jobname = 'ZALV2PDF'. "Background job name
+
+    CALL FUNCTION 'JOB_OPEN' "open a job
+        EXPORTING
+          jobname          = lv_jobname
+        IMPORTING
+          jobcount         = lv_jobcnt
+        EXCEPTIONS
+          cant_create_job  = 1
+          invalid_job_data = 2
+          jobname_missing  = 3
+          OTHERS           = 4.
+
+
+    IF sy-subrc EQ 0.
+      DATA : lv_rqdest TYPE tsp01-rqdest VALUE 'LP01',
+            lv_linsz TYPE sylinsz VALUE '9999999'.
+
+      CALL FUNCTION 'RS_REFRESH_FROM_SELECTOPTIONS'
+        EXPORTING
+          curr_report     = sy-repid
+        TABLES
+          selection_table = lt_param.
+
+*      CREATE OBJECT lo_grid.
+*
+*      CALL METHOD lo_grid->get_internal_filter(
+*        IMPORTING
+*          et_filter = it_filter ).
+      SUBMIT (sy-repid) "submit the same program
+        TO SAP-SPOOL  DESTINATION lv_rqdest
+        LINE-SIZE lv_linsz
+        IMMEDIATELY 'X'
+        KEEP IN SPOOL 'X'
+        USER sy-uname VIA JOB lv_jobname NUMBER lv_jobcnt
+        WITHOUT SPOOL DYNPRO
+        WITH SELECTION-TABLE lt_param
+        AND RETURN.
+
+      CALL FUNCTION 'JOB_CLOSE' "job close
+        EXPORTING
+          jobcount             = lv_jobcnt
+          jobname              = lv_jobname
+          strtimmed            = 'X'
+        EXCEPTIONS
+          cant_start_immediate = 1
+          invalid_startdate    = 2
+          jobname_missing      = 3
+          job_close_failed     = 4
+          job_nosteps          = 5
+          job_notex            = 6
+          lock_failed          = 7
+          invalid_target       = 8
+          OTHERS               = 9.
+      IF sy-subrc <> 0.
+        RAISE job_cannot_be_closed.                    " Raise exception
+      ENDIF.
+    ELSE.
+      RAISE job_cannot_be_submitted.
+    ENDIF.
+*********** confirm job status if finished
+    DATA: lv_job    TYPE tbtcv-fin.                " Job status
+    DO 120 TIMES.
+      CALL FUNCTION 'BDL_READ_JOB_STATUS' "get job status
+        EXPORTING
+          jobname       = lv_jobname
+          jobnumber     = lv_jobcnt
+        IMPORTING
+          jobstatus     = lv_job
+        EXCEPTIONS
+          job_not_found = 1
+          OTHERS        = 2.
+      IF lv_job NE 'F'. "job finished
+        WAIT UP TO 1 SECONDS.
+        CONTINUE.
+      ELSE.
+        EXIT.
+      ENDIF.
+    ENDDO.
+**calculate report name in Spool table
+    DATA:  lv_rq2name TYPE tsp01-rq2name.           " Spool request
+    DATA: lv_tmp(14) TYPE c,                       " temp
+        lv_string TYPE string,                   " store program name
+        lv_temp TYPE tsp01-rq2name,              " Spool request
+        lv_spool TYPE tsp01-rqident.             " spool number
+    IF lv_job EQ 'F'. "job finished
+      lv_len = strlen( sy-repid ) .
+      IF lv_len >= 9 .
+        CONCATENATE sy-repid+0(9)
+                    sy-uname+0(3) INTO lv_rq2name .
+      ELSE.
+        lv_len = 9 - lv_len.
+        DO lv_len TIMES .
+          CONCATENATE lv_temp '_' INTO lv_temp .
+        ENDDO.
+        CONCATENATE sy-repid lv_temp
+                    sy-uname INTO lv_rq2name .
+      ENDIF.
+
+*Get spool request from SPOOL table TSP01
+      SELECT rqident rq2name rqcretime FROM tsp01 INTO TABLE lt_tsp01
+              WHERE rq2name = lv_rq2name AND rqowner = sy-uname .
+*sort table to find latest spool no
+      SORT  lt_tsp01 BY rqcretime DESCENDING .
+*read table to find latest spool no
+      READ TABLE lt_tsp01 INTO ls_tsp01 INDEX 1.
+*get user desktop
+*      CALL METHOD cl_gui_frontend_services=>get_desktop_directory
+*        CHANGING
+*          desktop_directory    = lv_string
+*        EXCEPTIONS
+*          cntl_error           = 1
+*          error_no_gui         = 2
+*          not_supported_by_gui = 3
+*          OTHERS               = 4.
+*      IF sy-subrc <> 0.
+** Implement suitable error handling here
+*      ENDIF.
+      CALL METHOD cl_gui_frontend_services=>file_save_dialog
+        EXPORTING
+          default_file_name    = '*.pdf'
+          file_filter          = '*.pdf'
+        CHANGING
+          filename             = lv_filename
+          path                 = lv_path
+          fullpath             = lv_fullpath
+          user_action          = lv_user_action
+        EXCEPTIONS
+          cntl_error           = 1
+          error_no_gui         = 2
+          not_supported_by_gui = 3
+          OTHERS               = 4.
+      IF sy-subrc <> 0.
+        lv_spoolid = ls_tsp01-rqident.
+        CALL FUNCTION 'RSPO_R_RDELETE_SPOOLREQ'
+          EXPORTING
+            spoolid = lv_spoolid.
+        COMMIT WORK.
+
+        MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+        WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+      ENDIF.
+      IF lv_fullpath IS INITIAL.
+        lv_spoolid = ls_tsp01-rqident.
+        CALL FUNCTION 'RSPO_R_RDELETE_SPOOLREQ'
+          EXPORTING
+            spoolid = lv_spoolid.
+        COMMIT WORK.
+        MESSAGE 'Error in file save' TYPE 'I'.
+        LEAVE LIST-PROCESSING.
+      ELSE.
+        lv_string = lv_fullpath.
+      ENDIF.
+*      CALL METHOD cl_gui_cfw=>update_view.
+*      CONCATENATE lv_string sy-datum sy-uzeit '.pdf' INTO lv_string.
+
+*Prepare selection table for PDF download
+*      REFRESH lt_param.
+*      CLEAR :ls_param.
+*      ls_param-selname = 'SPOOLNO'.
+*      ls_param-sign    = 'I'.
+*      ls_param-option  = 'EQ'.
+*      ls_param-low     = ls_tsp01-rqident.
+*      ls_param-high    = ''.
+*      APPEND ls_param TO lt_param.
+*
+*      CLEAR :ls_param.
+*      ls_param-selname = 'P_FILE'.
+*      ls_param-sign    = 'I'.
+*      ls_param-option  = 'EQ'.
+*      ls_param-low     = lv_string.
+*      ls_param-high    = ''.
+*      APPEND ls_param TO lt_param.
+
+* Submit to PDF converted and download
+      DATA : lv_pdf_bytecount TYPE i,
+             lipdf TYPE TABLE OF tline.
+      CALL FUNCTION 'CONVERT_ABAPSPOOLJOB_2_PDF'
+        EXPORTING
+          src_spoolid              = ls_tsp01-rqident
+          no_dialog                = ' '
+        IMPORTING
+          pdf_bytecount            = lv_pdf_bytecount
+        TABLES
+          pdf                      = lipdf
+        EXCEPTIONS
+          err_no_abap_spooljob     = 1
+          err_no_spooljob          = 2
+          err_no_permission        = 3
+          err_conv_not_possible    = 4
+          err_bad_destdevice       = 5
+          user_cancelled           = 6
+          err_spoolerror           = 7
+          err_temseerror           = 8
+          err_btcjob_open_failed   = 9
+          err_btcjob_submit_failed = 10
+          err_btcjob_close_failed  = 11.
+      IF sy-subrc NE 0.
+        lv_spoolid = ls_tsp01-rqident.
+        CALL FUNCTION 'RSPO_R_RDELETE_SPOOLREQ'
+          EXPORTING
+            spoolid = lv_spoolid.
+        COMMIT WORK.
+        MESSAGE 'Error: Conversion in PDF' TYPE 'I' DISPLAY LIKE 'E'.
+        LEAVE LIST-PROCESSING.
+
+      ENDIF.
+*---- Download to local
+      CALL FUNCTION 'GUI_DOWNLOAD'
+        EXPORTING
+          bin_filesize = lv_pdf_bytecount
+          filename     = lv_string
+          filetype     = 'BIN'
+        TABLES
+          data_tab     = lipdf.
+      IF sy-subrc EQ 0.
+        CONCATENATE 'File Downloaded:'
+                    lv_string
+                    INTO lv_string.
+        MESSAGE lv_string TYPE 'I' .
+      ELSE.
+        MESSAGE 'File Download Error' TYPE 'I' .
+      ENDIF.
+*      SUBMIT rstxpdft4 WITH SELECTION-TABLE lt_param
+*      AND RETURN.
+*      IF sy-subrc <> 0.
+*        MESSAGE  'PDF convert not possible' TYPE 'I'.
+*      ELSE.
+
+      lv_spoolid = ls_tsp01-rqident.
+      CALL FUNCTION 'RSPO_R_RDELETE_SPOOLREQ'
+        EXPORTING
+          spoolid = lv_spoolid.
+      COMMIT WORK.
+*      ENDIF.
+    ELSE.
+      MESSAGE  'PDF Can not be downloaded, you have selected huge data. Reduce data and try again' TYPE 'I'.
+    ENDIF.
+*ENDCASE.
+
+*****
+*****
+*****
+* ********* Derive job counter
+*CALL METHOD cl_gui_frontend_services=>file_save_dialog
+*  EXPORTING
+*    default_file_name    = '*.pdf'
+*    file_filter          = '*.pdf'
+*  CHANGING
+*    filename             = lv_filename
+*    path                 = lv_path
+*    fullpath             = lv_fullpath
+*    user_action          = lv_user_action
+*  EXCEPTIONS
+*    cntl_error           = 1
+*    error_no_gui         = 2
+*    not_supported_by_gui = 3
+*    OTHERS               = 4.
+*IF sy-subrc <> 0.
+*  MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+*  WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+*ENDIF.
+*
+*IF lv_user_action <> '9'.
+**---- Get parameters from select option
+*  CALL FUNCTION 'RS_REFRESH_FROM_SELECTOPTIONS'
+*    EXPORTING
+*      curr_report     = sy-repid
+*    TABLES
+*      selection_table = li_slopt.
+*
+**---- get print parameters
+*  CALL FUNCTION 'GET_PRINT_PARAMETERS'
+*    EXPORTING
+*      destination    = 'LOCL'
+*      immediately    = ' '
+*      line_count     = '65'
+*      line_size      = '255'
+*      no_dialog      = 'X'
+*      cover_page     = ''
+*    IMPORTING
+*      out_parameters = lwa_params.
+*
+*  SUBMIT zpvrep_verification_process WITH SELECTION-TABLE li_slopt
+*                                TO SAP-SPOOL
+*                                SPOOL PARAMETERS lwa_params
+*                                WITHOUT SPOOL DYNPRO
+*                                AND RETURN.
+**---- Get created spool number from tsp01
+*  PERFORM get_spool_number USING sy-repid
+*                             sy-uname
+*                    CHANGING mi_rqident.
+*
+*  CALL FUNCTION 'CONVERT_ABAPSPOOLJOB_2_PDF'
+*    EXPORTING
+*      src_spoolid   = mi_rqident
+*      no_dialog     = ' '
+*    IMPORTING
+*      pdf_bytecount = lv_pdf_bytecount
+*    TABLES
+*      pdf           = li_pdf.
+**---- Download to local
+*  CALL FUNCTION 'GUI_DOWNLOAD'
+*    EXPORTING
+*      bin_filesize = lv_pdf_bytecount
+*      filename     = lv_fullpath
+*      filetype     = 'BIN'
+*    TABLES
+*      data_tab     = li_pdf.
+  ENDIF.
+*ENDIF.
+ENDFORM.                    " UC
