@@ -1,0 +1,36 @@
+SAP defaultly take the symbol into right side only.
+Ex: 100.00-
+    200.00-
+but we need to dispaly the symbol to right side that is "-ve"
+Ex:
+-100.00
+-200.00
+
+in ALV:
+
+1. Create one conversion function module .
+CONVERSION_EXIT_ZSIGN_OUTPUT
+IMPORTING
+  INPUT type DMBTR
+EXPORTING
+  OUTPUT type CLIKE
+  
+Code:
+DATA: lv_char TYPE CHAR20.
+WRITE INPUT TO lv_char.
+CALL FUNCTION 'CLOI_PUT_SIGN_IN_FRONT'
+changing
+value = lv_char.
+
+OUTPUT = lv_char.
+
+2. Now assign the conversion exit to fieldcat~editmask
+
+FCAT-EDITMASK = '==ZSIGN'.
+
+3. Whenever you display the alv grid --> alv is automatically convert the currency -ve symbol to left side.
+
+-100.00
+-200.00
+
+
