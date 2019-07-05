@@ -1,0 +1,51 @@
+in Table control:
+
+1. How to show the search record at top postion of table control?
+
+Ans. You need to implement amodal screen for this and a Find button above the table control.
+or you can use POPUP_GET_VALUES FM
+after you enter a value in the POP up screen.
+" You need to put some effort to implement this, wish you to implement it successfully as this is possible
+READ TABLE ITAB WITH KEY VBELN = FIND_VBELN. " FIND_VBELN is the field on your find screen.
+if sy-subrc = 0.
+tc-top_line = sy-tabix. " this makes the record visible in the First position
+endif.
+
+2. How to do sorting on table control headers?
+
+Ans. MODULE sort INPUT.
+DATA : gt_ztest TYPE STANDARD TABLE OF ztestl.
+DATA : table_control_col TYPE LINE OF  scxtab_column_it.
+DATA : col_sel    TYPE scxtab_column, lv_col_pos TYPE int4.
+
+CASE function.
+WHEN ‘SORT’. ”  Function Code
+READ TABLE tctrl_ztestl-cols INTO table_control_col WITH KEY selected = ‘X’.
+IF sy-subrc = 0.
+CASE table_control_col-index .
+WHEN ‘1’.
+gt_ztest[] = total[].
+SORT gt_ztest[] ASCENDING BY matnr.
+total[] = gt_ztest[].
+extract[] = total[].
+WHEN ‘2’.
+gt_ztest[] = total[].
+SORT gt_ztest[] ASCENDING BY spras.
+total[] = gt_ztest[].
+extract[] = total[].
+WHEN ‘3’.
+gt_ztest[] = total[].
+SORT gt_ztest[] ASCENDING BY maktx.
+total[] = gt_ztest[].
+extract[] = total[].
+ENDCASE.
+ELSE.
+” When no column selected for SORT, pop up displays a message to select a column to sort
+CALL FUNCTION ‘POPUP_TO_INFORM’
+EXPORTING
+titel =  ‘Information’
+txt1  = ‘Please Select a Column to Sort!’
+txt2  = mark_extract.
+ENDIF.
+ENDCASE.
+ENDMODULE.
