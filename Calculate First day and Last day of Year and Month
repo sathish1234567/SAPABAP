@@ -1,0 +1,58 @@
+FUNCTION OIL_MONTH_GET_FIRST_LAST.
+*"----------------------------------------------------------------------
+*"*"Lokale Schnittstelle:
+*"  IMPORTING
+*"     VALUE(I_MONTH) TYPE  FCMNR OPTIONAL
+*"     VALUE(I_YEAR) TYPE  GJAHR OPTIONAL
+*"     VALUE(I_DATE) TYPE  SY-DATUM OPTIONAL
+*"  EXPORTING
+*"     VALUE(E_FIRST_DAY) TYPE  SY-DATUM
+*"     VALUE(E_LAST_DAY) TYPE  SY-DATUM
+*"  EXCEPTIONS
+*"      WRONG_DATE
+*"----------------------------------------------------------------------
+
+  DATA: BEGIN OF ls_date,
+         year     LIKE i_year,
+         month    LIKE i_month,
+         day(2)   TYPE n,
+        END OF ls_date,
+        lf_date LIKE sy-datum.
+
+
+* Month / Year information is base for procesing, when filled
+  IF i_month IS INITIAL OR i_year IS INITIAL.
+* if either month or year is not filled, take date
+    IF i_date IS INITIAL.
+      MESSAGE e088(FK) with 'DATE' 'INITIAL'
+                   RAISING wrong_date.
+    ENDIF.
+    ls_date = i_date.
+  ELSE.
+* check value is ok!
+    IF i_month > 12.
+      MESSAGE e088(FK) with 'MONTH' i_month
+                   RAISING wrong_date.
+    ENDIF.
+    ls_date-year   = i_year.
+    ls_date-month  = i_month.
+  ENDIF.
+
+* 1st day:
+  ls_date-day = '01'.
+  e_first_day = ls_date.
+
+* Last day:
+  IF ls_date-month = '12' AND ls_date-year = '9999'.
+    e_last_day = '99991231'.
+  ELSE.
+    IF ls_date-month < '12'.
+      ls_date-month = ls_date-month + 1.
+    ELSE.
+      ls_date-month = '01'.
+      ls_date-year = ls_date-year + 1.
+    ENDIF.
+    lf_date = ls_date.
+    e_last_day = lf_date - 1.
+  ENDIF.
+ENDFUNCTION.
