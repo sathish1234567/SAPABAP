@@ -1,0 +1,54 @@
+ " to ge the last month date and year
+    CALL FUNCTION 'CCM_GO_BACK_MONTHS'
+      EXPORTING
+        currdate   = sy-datum
+        backmonths = '001'
+      IMPORTING
+        newdate    = lv_datum.
+        
+* splitting the month and year from lv_datum.
+      lv_month = lv_datum+4(2).
+      lv_year = lv_datum+0(4).
+      CALL FUNCTION 'NUMBER_OF_DAYS_PER_MONTH_GET'
+        EXPORTING
+          par_month = lv_month
+          par_year  = lv_year
+        IMPORTING
+          par_days  = lv_days.        
+
+* Ceil Calculation
+   CALL FUNCTION 'ZFOS_CEIL_CALC'
+    EXPORTING
+      im_value                 = pv_decimal
+      im_significance          = pv_signif
+    IMPORTING
+      ev_ceil_val              = pv_value
+    EXCEPTIONS
+      divide_zero_not_possible = 1
+      OTHERS                   = 2.
+  IF sy-subrc <> 0.
+  
+  ENDIF.
+  FUNCTION zfos_ceil_calc.
+*"----------------------------------------------------------------------
+*"*"Local Interface:
+*"  IMPORTING
+*"     REFERENCE(IM_VALUE) TYPE  MENGE_D
+*"     REFERENCE(IM_SIGNIFICANCE) TYPE  INT4
+*"  EXPORTING
+*"     REFERENCE(EV_CEIL_VAL) TYPE  INT4
+*"  EXCEPTIONS
+*"      DIVIDE_ZERO_NOT_POSSIBLE
+*"----------------------------------------------------------------------
+  DATA lv_number TYPE menge_d.
+  IF im_significance LE 0.
+    RAISE divide_zero_not_possible.
+  ENDIF.
+  lv_number = im_value / im_significance.
+  lv_number = ceil( lv_number ).
+  ev_ceil_val = lv_number * im_significance.
+
+
+
+ENDFUNCTION.
+  
