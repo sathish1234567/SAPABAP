@@ -1,0 +1,14 @@
+After GRN creation:
+input Outbound deliveries/matnr/quantities.  
+
+it is updating to MSEG with MBLNR/MJAHR/MATNR/EBELN/EBELP. --> 101
+
+How to link to mseg --> outbound devliveries.
+
+1.  take PO/Item --> pass into EKBE with combination of BWART = 641 and MSEG~ebeln/ebelp. --> now you will get the reference no's i.e related to OUTBOUND deliveries.
+
+2.  Pass this reference to the outbound deleveries of the input.
+
+
+
+
