@@ -1,0 +1,88 @@
+1
+Hi,
+
+within loop call automatic generated function module, use code as below mentioned. for example.
+
+declare control paramters.
+
+DATA:LS_CONPARA TYPE SSFCTRLOP,
+
+FLAG TYPE CHAR1 VALUE 'X'.
+
+CALL FUNCTION 'SSF_FUNCTION_MODULE_NAME'
+
+EXPORTING
+
+FORMNAME = formname
+
+IMPORTING
+
+FM_NAME = FM
+
+EXCEPTIONS
+
+NO_FORM = 1
+
+NO_FUNCTION_MODULE = 2
+
+OTHERS = 3.
+
+IF SY-SUBRC <> 0.
+
+MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+
+WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+
+ENDIF.
+
+loop at itab into wa.
+
+CLEAR LS_CONPARA.
+
+AT FIRST.
+
+LS_CONPARA-NO_OPEN = SPACE.
+
+LS_CONPARA-NO_CLOSE = 'X'.
+
+ENDAT.
+
+IF FLAG = SPACE.
+
+LS_CONPARA-NO_OPEN = 'X'.
+
+LS_CONPARA-NO_CLOSE = 'X'.
+
+ENDIF.
+
+AT LAST.
+
+LS_CONPARA-NO_OPEN = 'X'.
+
+LS_CONPARA-NO_CLOSE = SPACE..
+
+ENDAT.
+
+call function FM.
+
+EXPORTING
+
+CONTROL_PARAMETERS = LS_CONPARA
+
+TABLES
+
+wa = wa
+
+IF SY-SUBRC <> 0.
+
+MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+
+WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+
+ENDIF.
+
+CLEAR: FLAG.
+
+endloop.
+
+i hope it will be useful.
