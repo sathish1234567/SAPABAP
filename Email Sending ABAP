@@ -1,0 +1,237 @@
+FORM email TABLES pt_error TYPE STANDARD TABLE
+           USING pv_success.
+
+
+  DATA : it_params TYPE TABLE OF tvarvc,
+         wa_params TYPE  tvarvc,
+         ld_doc_data TYPE sodocchgi1,
+         wa_it_receivers TYPE somlreci1,
+         lt_receivers TYPE REF TO cl_cam_address_bcs,
+         lt_header TYPE TABLE OF solisti1,
+         lw_header TYPE  solisti1,
+         lv_header TYPE string,
+         lv_content TYPE string,
+         lw_message_1 TYPE solisti1,
+         lt_message_1 TYPE TABLE OF solisti1,
+         lw_return TYPE bapiret2,
+         lv_ztarget_qty_i TYPE string,
+         lv_acv_i TYPE string,
+         lv_int TYPE i,
+         gv_success.
+
+  CONSTANTS : gc_c_htm      TYPE char3   VALUE 'HTM',       "#EC NEEDED
+            gc_c_new_line TYPE char255 VALUE '<br>',
+            gc_c_end_line TYPE char255 VALUE '</br>',
+            gc_c(1)       TYPE c       VALUE 'C',
+            gc_x          TYPE char1   VALUE 'X',
+            gc_1(1)       TYPE c       VALUE '1'.
+
+
+  DATA : gt_message_body   TYPE STANDARD TABLE OF solisti1, "#EC NEEDED
+         gw_ls_line        TYPE solisti1,
+         gt_tl_contents    TYPE STANDARD TABLE OF soli,
+         gw_l_doc_len      TYPE so_obj_len,
+         gt_binary_content TYPE STANDARD TABLE OF solix,
+
+         go_send_request   TYPE REF TO cl_bcs,
+         go_document       TYPE REF TO cl_document_bcs,
+         go_document1      TYPE REF TO cl_document_bcs,
+         go_sender         TYPE REF TO cl_cam_address_bcs,
+         go_recipient      TYPE REF TO cl_cam_address_bcs,
+         gx_bcs_exception  TYPE REF TO cx_bcs, " exceptions
+         gw_sd_addr        TYPE adr6-smtp_addr,
+         gw_rc_addr        TYPE adr6-smtp_addr,
+         gw_sub(50)        TYPE c,
+         lv_date           TYPE string,
+         lv_time           TYPE string,
+         gv_rec_cnt        TYPE char10.
+
+  DATA : gw_cc        TYPE c,
+         gw_bcc       TYPE c.
+
+
+*  gv_rec_cnt = gv_no_of_records.
+*  lv_int = lv_ztarget_qty.
+*  lv_ztarget_qty_i = lv_int.
+*  lv_acv_i         = lv_acv.
+
+*	Get the mail address
+  SELECT *
+    FROM tvarvc
+    INTO TABLE it_tvarvc
+    WHERE NAME = 'PROGRAM NAME'
+      AND TYPE  = 'S'.
+  IF sy-subrc EQ 0.
+
+
+  ENDIF.
+  IF gv_error = 'X'.
+    gw_sub =  'Vodafone Performance data Job Run Status – Fail' . "Subject
+
+    gw_ls_line-line = 'Dear All,'.                " Salutation
+    APPEND gw_ls_line TO gt_message_body.
+    CLEAR : gw_ls_line.
+    gw_ls_line-line = gc_c_new_line.
+    APPEND gw_ls_line TO gt_message_body.
+    CLEAR : gw_ls_line.
+    gw_ls_line-line = gc_c_new_line.
+    APPEND gw_ls_line TO gt_message_body.
+
+
+    " Body....................
+    CLEAR : gw_ls_line.
+    gw_ls_line-line = 'Please be informed that today’s VODAFONE job run is Failed.'.
+    APPEND gw_ls_line TO gt_message_body.
+
+    CLEAR : gw_ls_line.
+    gw_ls_line-line = gc_c_new_line.
+    APPEND gw_ls_line TO gt_message_body.
+
+    CLEAR : gw_ls_line.
+    gw_ls_line-line = 'Please check the background program for further analysis.'.
+    APPEND gw_ls_line TO gt_message_body.
+
+  ELSEIF  pv_success = 'X'.
+    gw_sub =  VODAFONE Performance data Job Run Status – Success' . "Subject
+
+    gw_ls_line-line = 'Dear All,'.                " Salutation
+    APPEND gw_ls_line TO gt_message_body.
+    CLEAR : gw_ls_line.
+    gw_ls_line-line = gc_c_new_line.
+    APPEND gw_ls_line TO gt_message_body.
+    CLEAR : gw_ls_line.
+    gw_ls_line-line = gc_c_new_line.
+    APPEND gw_ls_line TO gt_message_body.
+    CLEAR : gw_ls_line.
+    gw_ls_line-line = gc_c_new_line.
+    APPEND gw_ls_line TO gt_message_body.
+
+
+    CLEAR : gw_ls_line.
+    gw_ls_line-line = 'Summary for Files processed today'.
+    APPEND gw_ls_line TO gt_message_body.
+    .
+    CLEAR : gw_ls_line.
+    gw_ls_line-line = gc_c_new_line.
+    APPEND gw_ls_line TO gt_message_body.
+    CLEAR : gw_ls_line.
+    gw_ls_line-line = gc_c_new_line.
+    APPEND gw_ls_line TO gt_message_body.
+    CLEAR : gw_ls_line.
+    gw_ls_line-line = gc_c_new_line.
+    APPEND gw_ls_line TO gt_message_body.CLEAR : gw_ls_line.
+    CLEAR : gw_ls_line.
+    gw_ls_line-line = gc_c_new_line.
+    APPEND gw_ls_line TO gt_message_body.
+
+    " Table format data................
+    CLEAR gw_ls_line-line.
+    CONCATENATE '<style>'
+                'table, th, td' '{ border: 0.03px solid black; }'
+                '</style>'
+                INTO gw_ls_line-line.
+    APPEND gw_ls_line TO gt_message_body.
+    CLEAR : gw_ls_line.
+    CONCATENATE '<TABLE>'
+                '<tr>'
+                '<th align="center">' 'Sr No'  '</th>'
+                '<th align="center">' 'File Name' '</th>'
+                '<th align="center">' 'Record Count'  '</th>'
+                '</tr>'
+                INTO gw_ls_line-line.
+    APPEND gw_ls_line TO gt_message_body.
+    CONCATENATE '<tr>'
+                '<td align="center">' '1'  '</td>'
+                '<td align="center">' filename '</td>'
+                '<td align="center">' gv_rec_cnt  '</td>'
+                '</tr>'
+                '</Table>'
+                INTO gw_ls_line-line.
+    APPEND gw_ls_line TO gt_message_body.
+  ENDIF.
+
+*  LOOP AT pt_error[] INTO gs_error.
+*    CLEAR : gw_ls_line.
+*    CONCATENATE '<tr>'
+*                '<td>' gs_error-orn  '</td>'
+*                '<td>' gs_error-msg '</td>'
+*                '</tr>'
+*                INTO gw_ls_line-line.
+*    APPEND gw_ls_line-line TO gt_message_body.
+*  ENDLOOP.
+*  CLEAR : gw_ls_line.
+*  gw_ls_line-line = '</table>'.
+*  APPEND gw_ls_line TO gt_message_body.
+
+  gw_ls_line-line = gc_c_new_line.
+  APPEND gw_ls_line TO gt_message_body.
+
+
+  CLEAR : gw_ls_line.
+  gw_ls_line-line = 'This is a system generated email. Please do not reply.'.
+  APPEND gw_ls_line TO gt_message_body.
+  CLEAR : gw_ls_line.
+  TRY .
+      go_send_request  = cl_bcs=>create_persistent( ).
+      gt_tl_contents[] = gt_message_body[].
+
+      go_document = cl_document_bcs=>create_document(
+                                       i_type = gc_c_htm
+                                       " RAW document format
+                                       i_text = gt_tl_contents
+                                       "GT_MESSAGE_BODY "Email body
+                                       i_length     = gw_l_doc_len
+                                       i_subject = gw_sub
+                                       " Email Subject
+                                       i_language   = sy-langu
+                                       i_importance = gc_1
+                                         ).
+
+*         -- Add document to send request
+      CALL METHOD go_send_request->set_document( go_document ).
+
+
+      " From Address
+      gw_sd_addr = 'donotreply@gmail.com'.
+      CALL METHOD cl_cam_address_bcs=>create_internet_address
+        EXPORTING
+          i_address_string = gw_sd_addr
+        RECEIVING
+          result           = go_sender.
+      go_send_request->set_sender( i_sender = go_sender ).
+
+
+
+      " To address
+“ get the mail address
+      LOOP AT it_params INTO wa_params.
+        gw_rc_addr = wa_params-LOW.
+        IF NOT gw_rc_addr IS INITIAL.
+          CALL METHOD cl_cam_address_bcs=>create_internet_address
+            EXPORTING
+              i_address_string = gw_rc_addr
+            RECEIVING
+              result           = go_recipient.
+          go_send_request->add_recipient( i_recipient  = go_recipient
+*                                          i_copy       =  gw_cc
+                                          i_express    = 'X' )."i_blind_copy = gw_bcc ).
+        ENDIF.
+      ENDLOOP .
+
+*     ** Send email
+      go_send_request->set_send_immediately( gc_x ).
+
+      go_send_request->send( ).
+
+      COMMIT WORK .
+
+      CLEAR gw_l_doc_len.
+
+      CLEAR gt_binary_content.
+
+      CLEAR go_document1.
+    CATCH cx_bcs INTO gx_bcs_exception .
+      MESSAGE gx_bcs_exception->error_text TYPE 'E'.
+
+  ENDTRY.
+ENDFORM. 
