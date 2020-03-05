@@ -309,6 +309,7 @@ FORM get_gos_attachement .
       packing_list               = lt_plist
       contents_bin               = lt_object_content
       receivers                  = lt_rec_tab
+      contents_txt               = t_body[]
     EXCEPTIONS
       too_many_receivers         = 1
       document_not_sent          = 2
