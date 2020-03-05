@@ -117,7 +117,7 @@ FORM mail ."using t_body
         EXPORTING
           i_sender = v_sender.
 * E-Mail l_recipient
-      v_rec = 'sathish.b@ril.com'.
+      v_rec = 'b.sathish011b@xyz.com'.           " mail id
       v_recipient = cl_cam_address_bcs=>create_internet_address( v_rec ).
       CALL METHOD v_send_request->add_recipient
         EXPORTING
