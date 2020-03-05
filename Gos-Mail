@@ -1,0 +1,310 @@
+*&---------------------------------------------------------------------*
+*& Report  YSAT_TEXTS010
+*&
+*&---------------------------------------------------------------------*
+*&
+*&
+*&---------------------------------------------------------------------*
+REPORT ysat_texts010.
+DATA : t_lines TYPE TABLE OF tline,
+       x_lines TYPE tline.
+DATA : t_body TYPE soli_tab.
+DATA  : lt_snwd_so TYPE TABLE OF snwd_so WITH HEADER LINE,
+        w_head     TYPE thead.
+
+
+DATA: v_send_request   TYPE REF TO cl_bcs, " E-Mail Send Request
+      v_document       TYPE REF TO cl_document_bcs, " E-Mail Attachment
+      v_sender         TYPE REF TO if_sender_bcs, " Address of Sender
+      v_recipient      TYPE REF TO if_recipient_bcs, " Distribution List
+      v_bcs_exception  TYPE REF TO cx_document_bcs, " BCS Exception
+      v_send_exception TYPE REF TO cx_send_req_bcs, " E-Mail sending Exception
+      v_addr_exception TYPE REF TO cx_address_bcs. " Address Exception
+DATA : v_result  TYPE sy-binpt,
+       v_message TYPE string,
+       v_sub     TYPE so_obj_des,
+       v_rec     TYPE ad_smtpadr.
+CALL FUNCTION 'READ_TEXT'
+  EXPORTING
+    client                  = sy-mandt
+    id                      = 'ST' "Standard Text
+    language                = sy-langu "System Language
+    name                    = 'ZTEST1' "name OF STANDARD TEXT
+    object                  = 'TEXT'
+  IMPORTING
+    header                  = w_head " LIKE  THEAD STRUCTURE  THEAD
+  TABLES
+    lines                   = t_lines
+  EXCEPTIONS
+    id                      = 1
+    language                = 2
+    name                    = 3
+    not_found               = 4
+    object                  = 5
+    reference_check         = 6
+    wrong_access_to_archive = 7
+    OTHERS                  = 8.
+IF sy-subrc <> 0.
+  RETURN.
+ENDIF.
+
+
+SELECT  *
+       FROM snwd_so
+       INTO TABLE lt_snwd_so.
+IF sy-subrc EQ 0.
+  READ TABLE lt_snwd_so INDEX 1.
+* Substitui valor da encomenda
+  CALL FUNCTION 'TEXT_SYMBOL_SETVALUE'
+    EXPORTING
+      name  = '&1&'
+      value = lt_snwd_so-client.
+* Substitui moeda da encomenda
+  CALL FUNCTION 'TEXT_SYMBOL_SETVALUE'
+    EXPORTING
+      name  = '&2&'
+      value = lt_snwd_so-client.
+
+  CALL FUNCTION 'TEXT_SYMBOL_SETVALUE'
+    EXPORTING
+      name  = '&3&'
+      value = lt_snwd_so-client.
+
+  CALL FUNCTION 'TEXT_SYMBOL_SETVALUE'
+    EXPORTING
+      name  = '&4&'
+      value = lt_snwd_so-client.
+
+  CALL FUNCTION 'TEXT_SYMBOL_SETVALUE'
+    EXPORTING
+      name  = '&5&'
+      value = lt_snwd_so-client.
+
+
+  CALL FUNCTION 'TEXT_SYMBOL_REPLACE'
+    EXPORTING
+      header = w_head
+    TABLES
+      lines  = t_lines.
+
+
+  LOOP AT t_lines INTO x_lines WHERE tdformat NE '/*'.
+    APPEND x_lines-tdline TO t_body.
+  ENDLOOP.
+  PERFORM get_gos_attachement.
+  PERFORM mail.
+
+  BREAK-POINT.
+
+ENDIF.
+FORM mail ."using t_body
+  TRY.
+      v_send_request = cl_bcs=>create_persistent( ).
+      v_send_request->set_status_attributes( i_requested_status = 'E' ).
+** Creating Document
+      IF t_body IS NOT INITIAL.
+        v_sub = 'Email using Sstandard text editor as mail body'.
+        v_document = cl_document_bcs=>create_document(
+        i_type = 'RAW'
+        i_importance = '5'
+        i_text = t_body
+        i_subject = v_sub ).
+      ENDIF.
+** Add document to send request
+      CALL METHOD v_send_request->set_document( v_document ).
+** Get Sender Object
+      CALL METHOD v_send_request->set_sender
+        EXPORTING
+          i_sender = v_sender.
+* E-Mail l_recipient
+      v_rec = 'sathish.b@ril.com'.
+      v_recipient = cl_cam_address_bcs=>create_internet_address( v_rec ).
+      CALL METHOD v_send_request->add_recipient
+        EXPORTING
+          i_recipient  = v_recipient
+*         i_express    = ''
+          i_copy       = ' '
+          i_blind_copy = ' '
+          i_no_forward = ' '.
+** Trigger E-Mail immediately
+      v_send_request->set_send_immediately( 'X' ).
+      CALL METHOD v_send_request->send(
+        EXPORTING
+          i_with_error_screen = 'X'
+        RECEIVING
+          result              = v_result ).
+      COMMIT WORK.
+    CATCH cx_document_bcs INTO v_bcs_exception.
+      v_message = v_bcs_exception->get_text( ).
+      MESSAGE v_message TYPE 'S'.
+    CATCH cx_send_req_bcs INTO v_send_exception.
+      v_message = v_send_exception->get_text( ).
+      MESSAGE v_message TYPE 'S'.
+  ENDTRY.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  GET_GOS_ATTACHEMENT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM get_gos_attachement .
+* Internal table declarations.
+  DATA: lt_links            TYPE TABLE OF relgraphlk,
+        lv_document_id      TYPE sofolenti1-doc_id,
+        lt_plist            LIKE sopcklsti1 OCCURS 2 WITH HEADER LINE,
+        lt_soli             LIKE soli OCCURS 100 WITH HEADER LINE,
+        lt_rec_tab          LIKE somlreci1 OCCURS 1 WITH HEADER LINE,
+        lt_roles            TYPE STANDARD TABLE OF relroles,
+        lt_appllinks        TYPE STANDARD TABLE OF srl_aprel,
+        lt_object_content_l LIKE solisti1 OCCURS 0 WITH HEADER LINE,
+        lt_object_content   LIKE solisti1 OCCURS 0 WITH HEADER LINE,
+        lt_doc_dat          LIKE sofolenti1.
+
+* Work areas
+  DATA: lwa_doc_data      LIKE sodocchgi1,
+        lwa_document_data LIKE sofolenti1,
+        lwa_links         LIKE LINE OF lt_links,
+        lwa_object        TYPE borident.
+*        lwa_links         LIKE LINE OF lt_links.
+
+
+* Variables.
+  DATA: lv_objtp     LIKE soodk-objtp,
+        lv_lang      LIKE tst01-dlang,
+        lv_line_size TYPE i VALUE 255,
+        lv_name      LIKE soextreci1-receiver.
+
+
+
+  lwa_object-objkey = '00000000000'.   " sales order no
+  lwa_object-objtype = 'BUS2032'.      " Business Object type for sales order
+
+
+* Get the attachment list for the input business object type
+* and name.
+  CALL FUNCTION 'SREL_GET_NEXT_RELATIONS'
+    EXPORTING
+      object         = lwa_object
+      relationtype   = 'ATTA'
+    TABLES
+      links          = lt_links
+      roles          = lt_roles
+      appllinks      = lt_appllinks
+    EXCEPTIONS
+      internal_error = 1
+      no_logsys      = 2
+      OTHERS         = 3.
+* Check the return code.
+  IF sy-subrc <> 0.
+    MESSAGE 'Error in FM SREL_GET_NEXT_RELATIONS' TYPE 'E'.
+  ENDIF.
+
+* Process the attachment list
+  LOOP AT lt_links INTO lwa_links.
+    MOVE lwa_links-objkey_b TO lv_document_id.
+
+* read the data
+    CALL FUNCTION 'SO_DOCUMENT_READ_API1'
+      EXPORTING
+        document_id                = lv_document_id
+      IMPORTING
+        document_data              = lwa_document_data
+      TABLES
+        object_content             = lt_object_content_l
+      EXCEPTIONS
+        document_id_not_exist      = 1
+        operation_no_authorization = 2
+        x_error                    = 3
+        OTHERS                     = 4.
+
+* Prepare the data.
+    lt_plist-transf_bin = 'X'.
+    lt_plist-head_start = 0.
+    lt_plist-head_num = 0.
+    lt_plist-body_start = 0.
+    lt_plist-body_num = 0.
+    lt_plist-doc_type = 'RAW'.
+    lt_plist-obj_descr = lwa_document_data-obj_descr.
+    APPEND lt_plist.
+
+    lt_plist-transf_bin = 'X'.
+    lt_plist-head_start = 0.
+    lt_plist-head_num = 0.
+
+    IF sy-tabix = 1.
+      lt_plist-body_start = 1.
+    ELSE.
+      DESCRIBE TABLE lt_object_content.
+      lt_plist-body_start = sy-tfill + 1.
+    ENDIF.
+
+    DESCRIBE TABLE lt_object_content_l LINES lt_plist-body_num.
+    lt_plist-doc_type = lwa_document_data-obj_type.
+
+* Get the size.
+    READ TABLE lt_object_content_l INDEX lt_plist-body_num.
+    lt_plist-doc_size = ( lt_plist-body_num - 1 ) * lv_line_size
+                     + strlen( lt_object_content_l ).
+    APPEND lt_plist.
+
+* Move the values to the main internal table.
+    APPEND LINES OF lt_object_content_l TO lt_object_content.
+
+
+  ENDLOOP.
+
+
+* move the receiver address.
+  MOVE: 'b.sathish011@xyz.com'  TO lt_rec_tab-receiver,
+        'U'      TO lt_rec_tab-rec_type.
+  APPEND lt_rec_tab.
+
+* Set the language.
+  lwa_doc_data-obj_langu = sy-langu.
+
+* Email subject.
+  CONCATENATE 'GOS '
+              '0000000000'      " sales order no
+              'attachments'
+              INTO lwa_doc_data-obj_descr
+              SEPARATED BY space.
+
+
+*send the email.
+  CALL FUNCTION 'SO_DOCUMENT_SEND_API1'
+    EXPORTING
+      document_data              = lwa_doc_data
+      sender_address             = lv_name
+      sender_address_type        = 'B'
+    TABLES
+      packing_list               = lt_plist
+      contents_bin               = lt_object_content
+      receivers                  = lt_rec_tab
+    EXCEPTIONS
+      too_many_receivers         = 1
+      document_not_sent          = 2
+      document_type_not_exist    = 3
+      operation_no_authorization = 4
+      parameter_error            = 5
+      x_error                    = 6
+      enqueue_error              = 7
+      OTHERS                     = 8.
+  IF sy-subrc <> 0.
+    MESSAGE 'Error in sending email' TYPE 'E'.
+  ENDIF.
+
+  COMMIT WORK.
+
+* send the email immediately.
+  SUBMIT rsconn01
+  WITH mode = 'INT'
+  AND RETURN.
+
+
+* Success message.
+  MESSAGE 'Email sent' TYPE 'S'.
+
+ENDFORM.
