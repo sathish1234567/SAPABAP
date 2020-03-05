@@ -92,6 +92,7 @@ IF sy-subrc EQ 0.
     APPEND x_lines-tdline TO t_body.
   ENDLOOP.
   PERFORM get_gos_attachement.
+*  PERFORM get_gos.
   PERFORM mail.
 
   BREAK-POINT.
@@ -117,7 +118,7 @@ FORM mail ."using t_body
         EXPORTING
           i_sender = v_sender.
 * E-Mail l_recipient
-      v_rec = 'b.sathish011b@xyz.com'.           " mail id
+      v_rec = 'b.sathish011@xyz.com'.
       v_recipient = cl_cam_address_bcs=>create_internet_address( v_rec ).
       CALL METHOD v_send_request->add_recipient
         EXPORTING
@@ -161,13 +162,17 @@ FORM get_gos_attachement .
         lt_appllinks        TYPE STANDARD TABLE OF srl_aprel,
         lt_object_content_l LIKE solisti1 OCCURS 0 WITH HEADER LINE,
         lt_object_content   LIKE solisti1 OCCURS 0 WITH HEADER LINE,
-        lt_doc_dat          LIKE sofolenti1.
+        lt_doc_dat          LIKE sofolenti1,
+        t_header            TYPE TABLE OF solisti1,
+        w_header            TYPE solisti1,
+        w_filename(50)      TYPE          c,
+        w_extension(5)      TYPE          c.
 
 * Work areas
-  DATA: lwa_doc_data      LIKE sodocchgi1,
-        lwa_document_data LIKE sofolenti1,
-        lwa_links         LIKE LINE OF lt_links,
-        lwa_object        TYPE borident.
+  DATA:               lwa_doc_data      LIKE sodocchgi1,
+                      lwa_document_data LIKE sofolenti1,
+                      lwa_links         LIKE LINE OF lt_links,
+                      lwa_object        TYPE borident.
 *        lwa_links         LIKE LINE OF lt_links.
 
 
@@ -207,12 +212,15 @@ FORM get_gos_attachement .
     MOVE lwa_links-objkey_b TO lv_document_id.
 
 * read the data
+    REFRESH : lt_object_content_l, t_header[].
+    CLEAR lwa_doCument_data.
     CALL FUNCTION 'SO_DOCUMENT_READ_API1'
       EXPORTING
         document_id                = lv_document_id
       IMPORTING
         document_data              = lwa_document_data
       TABLES
+        object_header              = t_header "STRUCTURE  SOLISTI1 OPTIONAL
         object_content             = lt_object_content_l
       EXCEPTIONS
         document_id_not_exist      = 1
@@ -220,16 +228,34 @@ FORM get_gos_attachement .
         x_error                    = 3
         OTHERS                     = 4.
 
+    CLEAR lt_plist.
+    LOOP AT t_header INTO w_header.
+
+      CASE w_header-line+0(12).
+        WHEN '&SO_FILENAME'.
+          SHIFT w_header-line LEFT BY 13 PLACES IN CHARACTER MODE.
+          SPLIT w_header-line AT '.' INTO w_filename
+                                          lt_plist-doc_type "w_extension
+                                          IN CHARACTER MODE.
+          EXIT.
+      ENDCASE.
+
+    ENDLOOP.
+    IF lt_plist-doc_type IS INITIAL.
+      lt_plist-doc_type = 'EXT'.
+    ENDIF.
+
 * Prepare the data.
     lt_plist-transf_bin = 'X'.
     lt_plist-head_start = 0.
     lt_plist-head_num = 0.
     lt_plist-body_start = 0.
     lt_plist-body_num = 0.
-    lt_plist-doc_type = 'RAW'.
+*    lt_plist-doc_type = 'RAW'.
     lt_plist-obj_descr = lwa_document_data-obj_descr.
     APPEND lt_plist.
 
+    CLEAR lt_plist.
     lt_plist-transf_bin = 'X'.
     lt_plist-head_start = 0.
     lt_plist-head_num = 0.
@@ -307,4 +333,175 @@ FORM get_gos_attachement .
 * Success message.
   MESSAGE 'Email sent' TYPE 'S'.
 
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  GET_GOS
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM get_gos .
+*  DATA: w_is_object_a  TYPE          sibflporb,
+*        w_rel          TYPE          obl_s_relt,
+*        w_links        TYPE          obl_s_link,
+*        w_document_id  TYPE          sofolenti1-doc_id,
+*        w_lines        TYPE          i,
+*        w_contents     TYPE          solisti1,
+*        w_filter       TYPE          sofilteri1,
+*        w_count        TYPE          i,
+*        w_attach(2)    TYPE          n,
+*        w_header       TYPE          solisti1,
+*        w_filename(50) TYPE          c,
+*        w_extension(5) TYPE          c,
+*
+*        t_rel          TYPE          obl_t_relt,
+*        t_links        TYPE          obl_t_link,
+*        t_contents     TYPE TABLE OF solisti1,
+*        t_header       TYPE TABLE OF solisti1.
+*
+*
+*  REFRESH: t_rel  ,
+*           t_links.
+*
+*  w_is_object_a-instid = w_eban-banfn.
+*
+*  w_is_object_a-typeid = 'BUS2105'.
+*
+*  w_is_object_a-catid = 'BO'.
+*
+*  w_rel-sign   = 'I'.
+*
+*  w_rel-option = 'EQ'.
+*
+*  w_rel-low    = 'ATTA'.
+*
+*  APPEND w_rel TO t_rel.
+*
+*  CLEAR  w_rel.
+*
+*  TRY.
+*
+*      CALL METHOD cl_binary_relation=>read_links
+*        EXPORTING
+*          is_object           = w_is_object_a
+*          it_relation_options = t_rel
+*        IMPORTING
+*          et_links            = t_links.
+*
+*    CATCH cx_obl_parameter_error .
+*    CATCH cx_obl_internal_error .
+*    CATCH cx_obl_model_error .
+*
+*  ENDTRY.
+*
+*  DELETE t_links WHERE typeid_b NE 'MESSAGE'.
+*
+*  w_count = 1.
+*
+*  LOOP AT t_links INTO w_links.
+*
+*    ADD 1 TO: w_count ,
+*              w_attach.
+*
+*    w_document_id = w_links-instid_b.
+*
+*    REFRESH t_contents.
+*
+*    CLEAR w_filter.
+*
+*    REFRESH t_header.
+*
+*    CALL FUNCTION 'SO_DOCUMENT_READ_API1'
+*      EXPORTING
+*        document_id                = w_document_id
+*        filter                     = w_filter
+*      TABLES
+*        object_header              = t_header
+*        object_content             = t_contents
+*      EXCEPTIONS
+*        document_id_not_exist      = 1
+*        operation_no_authorization = 2
+*        x_error                    = 3
+*        OTHERS                     = 4.
+*
+*    CASE sy-subrc.
+*      WHEN 0.
+*
+*        CLEAR w_lines.
+*
+*        DESCRIBE TABLE t_mailbin LINES w_lines.
+*
+*        ADD 1 TO w_lines.
+*
+*        CLEAR w_mailpack.
+*        w_mailpack-transf_bin = 'X'    .
+*        w_mailpack-head_start = w_count.
+*        w_mailpack-head_num   = 0      .
+*        w_mailpack-body_start = w_lines.
+*
+*        CLEAR w_lines.
+*
+*        DESCRIBE TABLE t_contents LINES w_lines.
+*
+*        w_mailpack-body_num   = w_lines.
+*
+*        CLEAR: w_filename ,
+*               w_extension.
+*
+*        LOOP AT t_header INTO w_header.
+*
+*          CASE w_header-line+0(12).
+*            WHEN '&SO_FILENAME'.
+*
+*              SHIFT w_header-line LEFT BY 13 PLACES IN CHARACTER MODE.
+*
+*              SPLIT w_header-line AT '.' INTO w_filename
+*                                              w_extension
+*                                              IN CHARACTER MODE.
+*
+*              EXIT.
+*
+*          ENDCASE.
+*
+*        ENDLOOP.
+*
+*        IF w_extension IS INITIAL.
+*
+*          w_mailpack-doc_type = 'EXT'.
+*
+*        ELSE.
+*
+*          w_mailpack-doc_type = w_extension.
+*
+*        ENDIF.
+*
+*        IF w_filename IS INITIAL.
+*
+*          CONCATENATE 'Attachment No.'(005)
+*                      w_attach
+*            INTO w_mailpack-obj_descr SEPARATED BY space.
+*
+*        ELSE.
+*
+*          w_mailpack-obj_descr = w_filename.
+*
+*        ENDIF.
+*
+*        w_mailpack-obj_name = w_mailpack-obj_descr.
+*
+*        w_mailpack-doc_size   = w_lines * 255.
+*
+*        w_mailhead-line       = w_mailpack-obj_descr.
+*
+*        APPEND w_mailhead TO t_mailhead.
+*
+*        APPEND w_mailpack TO t_mailpack.
+*
+*        APPEND LINES OF t_contents TO t_mailbin.
+*
+*    ENDCASE.
+*
+*  ENDLOOP.
 ENDFORM.
