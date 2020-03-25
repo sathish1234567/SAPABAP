@@ -1,0 +1,67 @@
+FUNCTION z_**********_bulk.
+*"----------------------------------------------------------------------
+*"*"Local Interface:
+*"  IMPORTING
+*"     VALUE(FILE_CONTENT) TYPE  XSTRINGVAL OPTIONAL
+*"     VALUE(REMOVE_HEADER) TYPE  CHAR1 DEFAULT 'X'
+*"     VALUE(I_STRUCTURE) OPTIONAL
+*"  TABLES
+*"      DATA_TABLE OPTIONAL
+*"----------------------------------------------------------------------
+
+
+  DATA struct_descr TYPE REF TO cl_abap_structdescr.
+  FIELD-SYMBOLS:
+    <comp_descr> LIKE LINE OF cl_abap_structdescr=>components,
+    <comp> TYPE any.
+  DATA: ls_string TYPE string,
+         it_line TYPE TABLE OF string,
+         wa_line TYPE string,
+         it_line2 TYPE TABLE OF string,
+         wa_line2 TYPE string,
+         l_regex TYPE string.
+  DATA : l_tab TYPE c VALUE cl_abap_char_utilities=>horizontal_tab.
+  CALL FUNCTION 'HR_KR_XSTRING_TO_STRING'
+    EXPORTING
+*     FROM_CODEPAGE = '8500'
+      in_xstring    = file_content
+*     OUT_LEN       =
+    IMPORTING
+      out_string    = ls_string.
+
+  SPLIT ls_string AT cl_abap_char_utilities=>cr_lf INTO TABLE it_line.
+  TRY.
+      struct_descr ?= cl_abap_typedescr=>describe_by_data( data_table ).
+    CATCH cx_sy_move_cast_error.
+      RETURN.
+  ENDTRY.
+  LOOP AT it_line INTO wa_line.
+    IF sy-tabix = 1 AND remove_header = 'X'.
+    ELSE.
+      REPLACE ALL OCCURRENCES OF
+      REGEX ',(?=(?:[^"]*$)|(?:[^"]*"[^"]*"[^"]*)*$)'
+      IN wa_line WITH l_tab.
+      REPLACE FIRST OCCURRENCE OF
+        REGEX '^"'
+        IN wa_line WITH ' '.
+      CONCATENATE '"' l_tab '"|"' l_tab '|' l_tab '"' INTO l_regex.
+      REPLACE ALL OCCURRENCES OF
+        REGEX l_regex                         "    '"l_tab"|"l_tab|l_tab"'
+        IN wa_line WITH l_tab.
+      REPLACE ALL OCCURRENCES OF '""' IN wa_line
+        WITH '"'.    "Added during testing
+      REPLACE ALL OCCURRENCES OF REGEX '"$' IN wa_line
+        WITH ' '.
+      SPLIT wa_line AT l_tab INTO TABLE it_line2.
+      LOOP AT struct_descr->components ASSIGNING <comp_descr>.
+        ASSIGN COMPONENT <comp_descr>-name
+               OF STRUCTURE data_table TO <comp>.
+        READ TABLE it_line2 INTO <comp> INDEX sy-tabix.
+      ENDLOOP.
+      APPEND data_table TO data_table.
+      REFRESH it_line2.
+    ENDIF.
+  ENDLOOP.
+
+
+ENDFUNCTION.
