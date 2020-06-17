@@ -1,0 +1,22 @@
+https://help.sap.com/doc/saphelp_nw74/7.4.16/en-us/b0/17988d321c41f2b425c8a0b68fa865/frameset.htm
+
+Get CSRF TOOKEN in abap:
+Process
+This is the code fragment for setting the CSRF token header fetch request on the REST client.
+
+            lo_rest_client->set_request_field(
+    name  = if_rest_request=>gc_header_csrf_token
+    value = 'Fetch' ).
+
+         
+On a successful response of a call with the fetch value, the returned CSRF token can be kept for later state changing REST requests. This is the code fragment for reading the CSRF token from a successful server response.
+
+            data: lv_csrf_token type string.
+  lv_csrf_token = lo_rest_client->get_header_field( 
+    name = if_rest_request=>gc_header_csrf_token ).
+
+         
+A question which comes up right away: How long can you use the CSRF token now?
+
+The validity of the CSRF token depends on the release of the ABAP component SAP_BASIS and on the activation of the security session management (which is controlled via the transaction SICF_SESSIONS on the granularity of SAP clients):
+
