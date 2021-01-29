@@ -1,3 +1,8 @@
+* to refresh the screen in alv grid
+* CALL FUNCTION 'GET_GLOBALS_FROM_SLVC_FULLSCR'
+*      IMPORTING
+*        E_GRID = REF_GRID.
+*
 PARAMETERS: p_layout TYPE slis_vari.
 
 DATA: g_alv_table TYPE REF TO cl_salv_table.
