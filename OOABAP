@@ -1,0 +1,53 @@
+types of classes
+1.  global class
+2.  local class
+global class we will create through the se24
+local classes we will create through the se38
+
+
+global/local class components
+------------------------------------------------------------------------------------------------------
+|                     |                         |                       |                             |
+attributes        methods                 events                    interfaces                        Aliases
+|                     ||
+|                     |_ normal                |_ instance events
+|_ types              |_ special               |_ static events
+|_ constants              |_ instance construtors
+|_ data                   |_ static constructors
+    |
+    |_ instance attributes
+    |_ static attributes
+    
+  
+  
+
+procedure for creting local classes
+1.  decleration of local class
+2.  implementation of local class
+
+decleration of local class
+--------------------------
+CLASS < CLASS NAME > DEFINITION
+  <VISIBILTY SECTIONS>
+ENDCLASS.
+
+1.  if the class does not have the method decleration, not required to implement the class.
+Ex: class a definition.
+      public section.
+        data a type i.
+    endclass.
+    
+    here : 'a' is the class name.
+    public section : visibilty of components.
+    here we have not declared the methods in definition section.. so no need to implement the class.
+    
+ Note: 
+ the memory will be allocated only when instantiate the class.. the instantiate the class is called 'Object'
+ 
+ Object creation done in 2 steps:
+ -------------------------------
+ 1. delcare the object reference
+    data : <obj refernce> type ref to <class name>
+ 2. create the object based on reference.
+    create object <obj_ reference>
+ 
