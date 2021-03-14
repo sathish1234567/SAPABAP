@@ -50,4 +50,18 @@ Ex: class a definition.
     data : <obj refernce> type ref to <class name>
  2. create the object based on reference.
     create object <obj_ reference>
+    
+    
+Access specifiers for ABAP class components:
+1.  Public section          
+2.  Protected section
+3.  Private section
+
+Public section                  Protected section                       Private section
+|_ access any where             |_ with in the class and sub class      |_ with in  the class
+
+
+
+
+
  
