@@ -69,8 +69,17 @@ __________________                                              ________________
     for every instance attribute.                                   first object for the class.
 4.  instance attributes accessed by using the object            4.  static attributes we can access either object or class name.
 5.  each object has sepearte memory.                            5.  all objects will point to the same memory location
-6.  Object varaibles.                                           6. called as class variables.
+6.  Object varaibles.                                           6.  called as class variables.
+7.  to access the instance  variable using the object,          7.  to access the static variable while using the class we can use the "==>"operator.
+    we can use the "-->" operator.
 _______________________________________________________________________________________________________________________
+
+Instance methods                                                staic methods
+____________________                                            _________________
+1.  local claases they can be declared by using                 1.  local classes they can be declared by using "class-methods"
+    "methods"
+2.  in instance methids we can access the instance and          2.  in static methods we can access only the static attributes only.
+    static attribute by using the instance(object)              3.  static methods , we can accessed either class-name or object.
 
 
 
