@@ -144,6 +144,21 @@ ___________
 
 Exception handling:
 ___________________
+--> An exception is a runtime error which is raised during program execution.
+--> if the exception is not handled the program will be terminated.
+--> exception handling is a process of handling the run time error and continue the program execution with out termination.
+
+exceptions are 2 types:
+
+1.  standard exceptions.
+2.  user defined exceptions.
+
+standard exceptions: 
+
+--> this exceptions are declared and raised by SAP itself.
+
+
+
 
 
         
