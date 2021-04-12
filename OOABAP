@@ -60,6 +60,19 @@ Access specifiers for ABAP class components:
 Public section                  Protected section                       Private section
 |_ access any where             |_ with in the class and sub class      |_ with in  the class
 
+_____________________________________________________________________________________________________________________
+Instance Attributes                                              Static Attribute
+__________________                                              _________________
+1.  this is the instance(object) specific.                      1.  this is not specific to the instance .
+2.  Instance attribute declared with "Data"                     2.  Declared with class-data.
+3.  each object will have a seperate memory allocation          3.  memory will be allocated for the static attribute when ever the class is loaded (or) whenever the 
+    for every instance attribute.                                   first object for the class.
+4.  instance attributes accessed by using the object            4.  static attributes we can access either object or class name.
+5.  each object has sepearte memory.                            5.  all objects will point to the same memory location
+6.  Object varaibles.                                           6. called as class variables.
+_______________________________________________________________________________________________________________________
+
+
 
 
 
