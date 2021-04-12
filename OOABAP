@@ -79,7 +79,7 @@ ____________________                                            ________________
 1.  local claases they can be declared by using                 1.  local classes they can be declared by using "class-methods"
     "methods"
 2.  in instance methids we can access the instance and          2.  in static methods we can access only the static attributes only.
-    static attribute by using the instance(object)              3.  static methods , we can accessed either class-name or object.
+    static attribute by using the instance(object)              3.  in static methods ,static attributes we can accessed through either class-name or object.
 
 
 
