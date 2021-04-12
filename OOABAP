@@ -119,7 +119,32 @@ How to use the parameters to the local class:
 use of "obligatory"?
 ____________________
 --> in local class by default parameter specified as part of the method are obligatory.
--->
+
+Optional keyword in mathod parameters:
+______________________________________
+--> optional is a keyword used as a part of method decleration to declare the parameter as a optional.
+
+changing vs exporting:
+_____________________
+export : the return values are recieved in seperate variabels.
+changing: the return values are recieved in same varaibles.
+
+returning parametes:
+____________________
+--> to restrict a method to return exactly one value , we can use the returning parameter.
+--> if a method contains returning parameter it can't contain exporting/changing and viceversa.
+--> in returning paramaeter a method contain only one returning parameter.
+--> returning parameter are always pass by value.
+
+Me keyword:
+___________
+--> it refers to current object in execution.
+--> ex: if the attribute name as well as the method parameter name are same. to differentiate between the attribute and parameter we prefix with the attribute with "me" keyword.
+--> me is similar to "this" in other language like JAVA.
+
+Exception handling:
+___________________
+
 
         
  
