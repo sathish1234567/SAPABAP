@@ -82,6 +82,48 @@ ____________________                                            ________________
     static attribute by using the instance(object)              3.  in static methods ,static attributes we can accessed through either class-name or object.
 
 
+____________________________________________________________________________________________________________________
+
+Methods:
+1.  Declaration
+2.  Implementation
+3.  Calling
+
+--> methods contains importing, exporting, changing, returning.
+
+-->1.   syntax:
+methods/class-methods <method name> [<parameter list>].     --> here [] --> means optional parmeters.
+.....
+endmethod. 
+
+-->2.   method implementation in the class syntax
+
+class <class name> implementaion.
+ method <method name>.
+ .....
+ ...
+ endmethod.
+endclass.
+
+-->3.   calling method.
+syntax: call method obj-><method name>[parmeters list]
+        call method class-name=><method name>[parmeter list].
+_____________________________________________________________________________________________________________
+
+How to use the parameters to the local class:
+
+-->in c, c++, java a mthod can return single value.
+-->in case of ABAP, a method can return "n" number of values depends up on number of exporting and changing parameters.
+
+
+use of "obligatory"?
+____________________
+--> in local class by default parameter specified as part of the method are obligatory.
+-->
+
+        
+ 
+
 
 
 
