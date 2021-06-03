@@ -1,0 +1,115 @@
+1. create the FUNCTION module with remote eanble.
+2. call the function like below
+CALL FUNCTION 'ZVRN_CONSENT_CREATE' STARTING NEW TASK lv_task
+    PERFORMING check_return ON END OF TASK
+    EXPORTING
+      i_vrn_no              = i_vrn_no
+    EXCEPTIONS
+      resource_failure      = 1
+      system_failure        = 2
+      communication_failure = 3.
+3. output recieving in check_return subroutine.
+FORM check_return USING task.
+
+  RECEIVE RESULTS FROM FUNCTION 'ZVRN_CONSENT_CREATE'
+      IMPORTING
+        et_return     = gt_ret
+        es_output     = gs_out
+        .
+  g_separatetask_done = 'X'.
+ENDFORM.                    " CHECK_RETURN
+
+4. we need to declare the global varaiables gt_ret,gs_out, g_separatetask_done.
+
+
+
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+FORM consent_create  USING    i_vrn_no TYPE /rgcs/vrn_no
+                              lw_value
+                     CHANGING lt_ret TYPE bapiret2_t
+                              ls_out TYPE zst_conscrt_out.
+  DATA : lt_ret_d TYPE bapiret2_t.
+  DATA lv_task  TYPE char50.
+
+  REFRESH gt_ret.
+  CLEAR gs_out.
+  CLEAR lv_task.
+  lv_task =  'D' && sy-uzeit && 'Z_VRN_LITE'.
+  CALL FUNCTION 'ZVRN_CONSENT_CREATE' STARTING NEW TASK lv_task
+    PERFORMING check_return ON END OF TASK
+    EXPORTING
+      i_vrn_no              = i_vrn_no
+    EXCEPTIONS
+      resource_failure      = 1
+      system_failure        = 2
+      communication_failure = 3.
+
+  IF lw_value IS NOT INITIAL.
+    WAIT UNTIL g_separatetask_done EQ 'X' UP TO lw_value SECONDS.
+  ELSE.
+    WAIT UNTIL g_separatetask_done EQ 'X'.
+  ENDIF.
+
+  IF gt_ret[] IS NOT INITIAL.
+    APPEND LINES OF gt_ret TO lt_ret.
+    REFRESH gt_ret[].
+  ENDIF.
+
+  IF gs_out IS NOT INITIAL.
+    ls_out = gs_out .
+    CLEAR gs_out.
+  ENDIF.
+
+ENDFORM.                    " CONSENT_CREATE
+
+
+
+FORM check_return USING task.
+
+  RECEIVE RESULTS FROM FUNCTION 'ZVRN_CONSENT_CREATE'
+      IMPORTING
+        et_return     = gt_ret
+        es_output     = gs_out
+        .
+  g_separatetask_done = 'X'.
+ENDFORM.                    " CHECK_RETURN
+
+
+
+FORM consent_create  USING    i_vrn_no TYPE /rgcs/vrn_no
+                              lw_value
+                     CHANGING lt_ret TYPE bapiret2_t
+                              ls_out TYPE zst_conscrt_out.
+  DATA : lt_ret_d TYPE bapiret2_t.
+  DATA lv_task  TYPE char50.
+
+  REFRESH gt_ret.
+  CLEAR gs_out.
+  CLEAR lv_task.
+  lv_task =  'D' && sy-uzeit && 'Z_VRN_LITE'.
+  CALL FUNCTION 'ZVRN_CONSENT_CREATE' STARTING NEW TASK lv_task
+    PERFORMING check_return ON END OF TASK
+    EXPORTING
+      i_vrn_no              = i_vrn_no
+    EXCEPTIONS
+      resource_failure      = 1
+      system_failure        = 2
+      communication_failure = 3.
+
+  IF lw_value IS NOT INITIAL.
+    WAIT UNTIL g_separatetask_done EQ 'X' UP TO lw_value SECONDS.
+  ELSE.
+    WAIT UNTIL g_separatetask_done EQ 'X'.
+  ENDIF.
+
+  IF gt_ret[] IS NOT INITIAL.
+    APPEND LINES OF gt_ret TO lt_ret.
+    REFRESH gt_ret[].
+  ENDIF.
+
+  IF gs_out IS NOT INITIAL.
+    ls_out = gs_out .
+    CLEAR gs_out.
+  ENDIF.
+
+ENDFORM.                    " CONSENT_CREATE
