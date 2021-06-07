@@ -1,0 +1,20 @@
+Generate Password/Token:
+________________________
+Function name: GENERAL_GET_RANDOM_PWD
+
+FUNCTION GENERAL_GET_RANDOM_PWD.
+*"----------------------------------------------------------------------
+*"*"Local Interface:
+*"  IMPORTING
+*"     REFERENCE(NUMBER_CHARS) TYPE  I
+*"  EXPORTING
+*"     REFERENCE(RANDOM_PWD) TYPE  STRING
+*"----------------------------------------------------------------------
+data lv_pwd_token type string.
+call function 'GENERAL_GET_RANDOM_PWD'
+exporting 
+  number_chars = '08'
+importing
+  random_pwd = lv_pwd_token.
+ 
+ outout: lv_pwd_token = J330677g this is always changing.
