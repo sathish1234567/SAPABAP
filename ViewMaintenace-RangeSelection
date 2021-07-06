@@ -1,0 +1,142 @@
+Usually a SAP Table Maintenance View (SM30) with single screen displays all the records in the table as shown below.
+
+abap-selection-screen-tmg-1
+
+What if we want to display only some records in SAP Table Maintenance View (SM30) based on the user selection? Just follow the below steps.
+
+Create a report program and design the selection screen for the table/view as per your requirement.
+Use the SAP function module VIEW_RANGETAB_TO_SELLIST to build the selection criteria for Table Maintenance View
+Use the SAP function module VIEW_MAINTENANCE_CALL to call the Table Maintenance View (SM30)
+TABLES: zemployee.
+CONSTANTS: c_view  TYPE   char30  VALUE 'ZEMPLOYEE',
+           c_u     TYPE   char1   VALUE 'U',
+           c_and   TYPE   char3   VALUE 'AND'.
+DATA: gt_seltab    TYPE STANDARD TABLE OF vimsellist.
+DATA: g_fieldname  TYPE vimsellist-viewfield.
+DATA: gt_exclude   TYPE TABLE OF vimexclfun,
+      gwa_exclude  TYPE vimexclfun.
+
+SELECT-OPTIONS: s_id    FOR zemployee-id,
+                s_name  FOR zemployee-name,
+                s_place FOR zemployee-place.
+
+*Add ID column to selection criteria of Table maintenanace view
+g_fieldname = 'ID'.
+
+CALL FUNCTION 'VIEW_RANGETAB_TO_SELLIST'
+  EXPORTING
+    fieldname          = g_fieldname
+    append_conjunction = c_and
+  TABLES
+    sellist            = gt_seltab
+    rangetab           = s_id.
+
+*Add Name column to selection criteria of Table maintenanace view
+g_fieldname = 'NAME'.
+
+CALL FUNCTION 'VIEW_RANGETAB_TO_SELLIST'
+  EXPORTING
+    fieldname          = g_fieldname
+    append_conjunction = c_and
+  TABLES
+    sellist            = gt_seltab
+    rangetab           = s_name.
+
+*Add Place column to selection criteria of Table maintenanace view
+g_fieldname = 'PLACE'.
+
+CALL FUNCTION 'VIEW_RANGETAB_TO_SELLIST'
+  EXPORTING
+    fieldname          = g_fieldname
+    append_conjunction = c_and
+  TABLES
+    sellist            = gt_seltab
+    rangetab           = s_place.
+
+* Call to the 'VIEW_MAINTENANCE_CALL' function module
+CALL FUNCTION 'VIEW_MAINTENANCE_CALL'
+  EXPORTING
+    action         = c_u
+    view_name      = c_view
+  TABLES
+    dba_sellist    = gt_seltab.
+Selection Screen : Display all the entries in SM30 where place is LONDON
+
+abap-selection-screen-tmg-2
+
+Table Maintenance View (SM30)
+
+abap-selection-screen-tmg-3
+
+Use the ACTION parameter in FM VIEW_MAINTENANCE_CALL to call the Table Maintenance in Change or Display mode.
+
+GUI function codes (Buttons) in the Table Maintenance can be deactivated using the Table parameter  EXCL_CUA_FUNCT of FM VIEW_MAINTENANCE_CALL.
+
+Below program deactivate New Entries, Copy and Delete buttons in SM30.
+
+TABLES: zemployee.
+CONSTANTS: c_view  TYPE   char30  VALUE 'ZEMPLOYEE',
+           c_u     TYPE   char1   VALUE 'U',
+           c_and   TYPE   char3   VALUE 'AND'.
+DATA: gt_seltab    TYPE STANDARD TABLE OF vimsellist.
+DATA: g_fieldname  TYPE vimsellist-viewfield.
+DATA: gt_exclude   TYPE TABLE OF vimexclfun,
+      gwa_exclude  TYPE vimexclfun.
+
+SELECT-OPTIONS: s_id    FOR zemployee-id,
+                s_name  FOR zemployee-name,
+                s_place FOR zemployee-place.
+
+*Add ID column to selection criteria of Table maintenanace view
+g_fieldname = 'ID'.
+
+CALL FUNCTION 'VIEW_RANGETAB_TO_SELLIST'
+  EXPORTING
+    fieldname          = g_fieldname
+    append_conjunction = c_and
+  TABLES
+    sellist            = gt_seltab
+    rangetab           = s_id.
+
+*Add Name column to selection criteria of Table maintenanace view
+g_fieldname = 'NAME'.
+
+CALL FUNCTION 'VIEW_RANGETAB_TO_SELLIST'
+  EXPORTING
+    fieldname          = g_fieldname
+    append_conjunction = c_and
+  TABLES
+    sellist            = gt_seltab
+    rangetab           = s_name.
+
+*Add Place column to selection criteria of Table maintenanace view
+g_fieldname = 'PLACE'.
+
+CALL FUNCTION 'VIEW_RANGETAB_TO_SELLIST'
+  EXPORTING
+    fieldname          = g_fieldname
+    append_conjunction = c_and
+  TABLES
+    sellist            = gt_seltab
+    rangetab           = s_place.
+
+*Deactivate New Entries
+gwa_exclude-function = 'NEWL'.  " Function Code for New Entries
+APPEND gwa_exclude TO gt_exclude.
+
+*Deactivate Copy
+gwa_exclude-function = 'KOPE'.  " Function Code for Copy
+APPEND gwa_exclude TO gt_exclude.
+
+*Deactivate Delete
+gwa_exclude-function = 'DELE'.  " Function Code for Delete
+APPEND gwa_exclude TO gt_exclude.
+
+* Call to the 'VIEW_MAINTENANCE_CALL' function module
+CALL FUNCTION 'VIEW_MAINTENANCE_CALL'
+  EXPORTING
+    action         = c_u
+    view_name      = c_view
+  TABLES
+    dba_sellist    = gt_seltab
+    excl_cua_funct = gt_exclude.
