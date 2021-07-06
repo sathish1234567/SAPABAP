@@ -1,0 +1,28 @@
+DATA: ls_tab TYPE zemp.
+DATA: gt_seltab   TYPE STANDARD TABLE OF vimsellist,
+      gt_exclude  TYPE TABLE OF vimexclfun,
+      gwa_exclude TYPE vimexclfun.
+.
+
+START-OF-SELECTION.
+  CLEAR: ls_tab.
+
+*Deactivate New Entries
+  gwa_exclude-function = 'NEWL'.  " Function Code for New Entries
+  APPEND gwa_exclude TO gt_exclude.
+
+*Deactivate Copy
+  gwa_exclude-function = 'KOPE'.  " Function Code for Copy
+  APPEND gwa_exclude TO gt_exclude.
+
+*Deactivate Delete
+  gwa_exclude-function = 'DELE'.  " Function Code for Delete
+  APPEND gwa_exclude TO gt_exclude.
+
+  CALL FUNCTION 'VIEW_MAINTENANCE_CALL'
+    EXPORTING
+      action         = 'U'
+      view_name      = 'ZEMP'
+    TABLES
+      dba_sellist    = gt_seltab
+      excl_cua_funct = gt_exclude.
