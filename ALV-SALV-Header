@@ -1,0 +1,166 @@
+Introduction
+
+We can develop ALV using different ways like using type pool SLIS or using the class Cl_GUI_ALV_GRID.
+
+In this article we will see how we can add PF-Status, Header and Footer to the ALV which is developed using class CL_SALV .
+
+Code Snippet
+
+In this program we will see adding PF-STATUS, Header and Footer to ALV using a single class CL_SALV_TABLE.
+
+REPORT  ZNAG_SAMPLE_01.
+*----------------------------------------------------------------------*
+*       CLASS lcl_report DEFINITION
+*----------------------------------------------------------------------*
+*
+*----------------------------------------------------------------------*
+CLASS LCL_REPORT DEFINITION.
+  PUBLIC SECTION.
+*----------------------------------------------------------------------*
+* Final Output Table
+*----------------------------------------------------------------------*
+    TYPES: BEGIN OF TY_MARA,
+            MATNR TYPE MATNR,
+            ERSDA TYPE ERSDA,
+            MATKL TYPE MATKL,
+            MTART TYPE MTART,
+            LVORM TYPE LVORM,
+           END OF TY_MARA.
+    DATA: O_ALV TYPE REF TO CL_SALV_TABLE,              " ALV Reference
+          T_MARA TYPE STANDARD TABLE OF TY_MARA.
+*----------------------------------------------------------------------*
+* Methods to Fetch Data and Generate Output
+*----------------------------------------------------------------------*
+    METHODS: GET_DATA,                                  "Data Selection
+             GENERATE_OUTPUT.                           "Generating Output
+  PRIVATE SECTION.
+*----------------------------------------------------------------------*
+* Methods to Set PF-Status, Header and Footer
+*----------------------------------------------------------------------*
+    METHODS: SET_PF_STATUS
+                  CHANGING
+                      CO_ALV TYPE REF TO CL_SALV_TABLE, " Default Pf Status
+             SET_TOP_OF_PAGE
+                  CHANGING
+                      CO_ALV TYPE REF TO CL_SALV_TABLE, " Set Top of page
+             SET_END_OF_PAGE
+                  CHANGING
+                      CO_ALV TYPE REF TO CL_SALV_TABLE. " Set End of page
+ENDCLASS.                    "lcl_report DEFINITION
+*----------------------------------------------------------------------*
+*       CLASS lcl_report IMPLEMENTATION
+*----------------------------------------------------------------------*
+*
+*----------------------------------------------------------------------*
+CLASS LCL_REPORT IMPLEMENTATION.
+*----------------------------------------------------------------------*
+* Data selection
+*----------------------------------------------------------------------*
+  METHOD GET_DATA.
+    SELECT MATNR ERSDA MATKL MTART LVORM INTO TABLE T_MARA
+           FROM MARA UP TO 20 ROWS.
+  ENDMETHOD.                    "get_data
+*----------------------------------------------------------------------*
+* Generating Output
+*----------------------------------------------------------------------*
+  METHOD GENERATE_OUTPUT.
+*Exception Class
+    DATA: LC_MSG TYPE REF TO CX_SALV_MSG.
+*----------------------------------------------------------------------*
+* We are calling the static Factory method which will give back
+* the ALV object reference.
+*----------------------------------------------------------------------*
+    TRY.
+        CALL METHOD CL_SALV_TABLE=>FACTORY
+          IMPORTING
+            R_SALV_TABLE = O_ALV
+          CHANGING
+            T_TABLE      = T_MARA.
+      CATCH CX_SALV_MSG INTO LC_MSG .
+    ENDTRY.
+************************************************************************
+* In this area we will call the methods which will set the
+* different properties to the ALV
+************************************************************************
+* Calling Set PF status method
+    CALL METHOD SET_PF_STATUS
+      CHANGING
+        CO_ALV = O_ALV.       "set_end_of_page
+* Calling the top of page method
+    CALL METHOD SET_TOP_OF_PAGE
+      CHANGING
+        CO_ALV = O_ALV.
+* Calling the End of page method
+    CALL METHOD SET_END_OF_PAGE
+      CHANGING
+        CO_ALV = O_ALV.
+************************************************************************
+* Displaying the ALV
+* Here we will call the DISPLAY method to get the output on the screen
+************************************************************************
+    O_ALV->DISPLAY( ).
+  ENDMETHOD.                    "generate_output
+************************************************************************
+*    In this area we will implement the methods which are defined in
+*    the class definition
+************************************************************************
+* Setting Default PF-Status
+  METHOD SET_PF_STATUS.
+    DATA: LO_FUNCTIONS TYPE REF TO CL_SALV_FUNCTIONS_LIST.
+* Default functions
+    LO_FUNCTIONS = CO_ALV->GET_FUNCTIONS( ).
+    LO_FUNCTIONS->SET_DEFAULT( ABAP_TRUE ).
+  ENDMETHOD.                    "set_pf_status
+* Setting Top_of_page
+  METHOD SET_TOP_OF_PAGE.
+    DATA: LO_HEADER TYPE REF TO CL_SALV_FORM_LAYOUT_GRID,
+          LO_H_LABEL TYPE REF TO CL_SALV_FORM_LABEL,
+          LO_H_FLOW  TYPE REF TO CL_SALV_FORM_LAYOUT_FLOW.
+* Header object
+    CREATE OBJECT LO_HEADER.
+*----------------------------------------------------------------------*
+* To create a Label or Flow we have to specify the target
+* row and column number where we need to set up the output
+* text.
+*----------------------------------------------------------------------*
+* Information in Bold
+    LO_H_LABEL = LO_HEADER->CREATE_LABEL( ROW = 1 COLUMN = 1 ).
+    LO_H_LABEL->SET_TEXT('Header of the ALV Output in Bold').
+* Information in tabular format
+    LO_H_FLOW = LO_HEADER->CREATE_FLOW( ROW = 2 COLUMN = 1 ).
+    LO_H_FLOW->CREATE_TEXT( TEXT = 'This is text of flow in Header' ).
+    LO_H_FLOW = LO_HEADER->CREATE_FLOW( ROW = 3 COLUMN = 1 ).
+    LO_H_FLOW->CREATE_TEXT( TEXT = 'Date of List Generation' ).
+    LO_H_FLOW = LO_HEADER->CREATE_FLOW( ROW = 3 COLUMN = 2 ).
+    LO_H_FLOW->CREATE_TEXT( TEXT = sy-datum ).
+* Set the top of list using the header for Online
+    CO_ALV->SET_TOP_OF_LIST( LO_HEADER ).
+* Set the top of list using the header for Print
+    CO_ALV->SET_TOP_OF_LIST_PRINT( LO_HEADER ).
+  ENDMETHOD.                    "set_top_of_page
+* Setting End_Of_page
+  METHOD SET_END_OF_PAGE.
+    DATA: LO_FOOTER  TYPE REF TO CL_SALV_FORM_LAYOUT_GRID,
+          LO_F_LABEL TYPE REF TO CL_SALV_FORM_LABEL,
+          LO_F_FLOW  TYPE REF TO CL_SALV_FORM_LAYOUT_FLOW.
+* Footer Object
+    CREATE OBJECT LO_FOOTER.
+* Information in Bold
+    LO_F_LABEL = LO_FOOTER->CREATE_LABEL( ROW = 1 COLUMN = 1 ).
+    LO_F_LABEL->SET_TEXT('Footer of the ALV in Bold').
+* Tabular Information
+    LO_F_FLOW = LO_FOOTER->CREATE_FLOW( ROW = 2 COLUMN = 1 ).
+    LO_F_FLOW->CREATE_TEXT( TEXT = 'This is text of flow in footer' ).
+* Set the end of list using the header for Online
+    CO_ALV->SET_END_OF_LIST( LO_FOOTER ).
+* Set the End of list using the header for Print
+    CO_ALV->SET_END_OF_LIST_PRINT( LO_FOOTER ).
+  ENDMETHOD.                    "set_end_of_page
+ENDCLASS.                    "lcl_report IMPLEMENTATION
+*----------------------------------------------------------------------*
+START-OF-SELECTION.
+*----------------------------------------------------------------------*
+  DATA: LO_REPORT TYPE REF TO LCL_REPORT.
+  CREATE OBJECT LO_REPORT.
+  LO_REPORT->GET_DATA( ).
+  LO_REPORT->GENERATE_OUTPUT( ).
