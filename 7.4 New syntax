@@ -1,0 +1,52 @@
+inline declarations:
+
+@data(internal table)
+--  this is the inline internal table decleration
+--  this is we will take it in data <internal table> type table of mara.
+
+select * from mara into table @data(it_table)
+
+  note for selecting any data from DATA base --> we need declare the internal table with @data(<internal table>/<work area>)
+  not only declaration, whatever using the varaibles in select, we need to take the @ before the variable
+__________________________________________________________________________
+loop at :
+
+loop at it_table into data(wa).   <-- here this is not select so we have not taken the @ before the data(wa).
+
+endloop.
+ 
+ 
+ <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+ String litterals you can use it in select statement.
+ 
+ validate the plant using string litterals
+ 
+ select-options: s_werks for werks_d.
+ 
+ select single 'valid plant' into @data(lv_valid_plant) from t001w where werks in @s_werks.
+  note: here string litteral is 'valid plant'. < -- if record exist based on the s_Werks, so 'valid palnt' string litteral send to the 'lv_Valid_plant'.
+<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+columns are seperated by comma(,) in select statement.
+--  select werks, name1
+           up to 10 rows
+           into @data(it_table)
+           from t001w.
+ <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+ 
+ mandatory to escape host variables using @sysmbol. <-- this is we have seen in the above code.
+ 
+ <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+ 
+ concatenation can be done in pipe operator (| |)
+ -- earlier we have used the "concatenate" statement"
+ -- now we are using the "| | " symbol instead of the "concatenate" statement.
+ -- in pipe(|) concatenate we need to put the variables in curly braces"{}"
+ -- |{var1} {var2}|
+ 
+ write: | { plant } --> { name1 }|
+ 
+
+
+
+ 
