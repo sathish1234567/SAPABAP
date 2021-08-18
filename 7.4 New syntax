@@ -59,7 +59,7 @@ columns are seperated by comma(,) in select statement.
  new syntax:
  select mandt, werks from t001w into table @data(it_table) USING CLIENT '110'.
  <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
- 
+ https://www.youtube.com/watch?v=T8ui2T0670k&list=PL-uGxwXIk4GDj1yUHofkm29u-qsFQf0Vw&index=8 
 
 
 
