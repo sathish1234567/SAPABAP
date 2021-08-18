@@ -45,6 +45,20 @@ columns are seperated by comma(,) in select statement.
  -- |{var1} {var2}|
  
  write: | { plant } --> { name1 }|
+ write: | this is the loop- { sy-tabix }|
+ 
+ complex in concatenate "|| " pipe symbol
+ -- multiple strings concatenation can be done using "&&" operator
+ -- varibales can be passed in concatenate operation using { } curly braces.
+ -- single(') or double(") can be used it is in | | operator.
+ 
+ <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+ 
+ Cliend specified syntax replaced by "USING CLIENT <<client>>
+ old way: client specified where mandt = '100'.
+ new syntax:
+ select mandt, werks from t001w into table @data(it_table) USING CLIENT '110'.
+ <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
  
 
 
