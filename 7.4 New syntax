@@ -59,7 +59,31 @@ columns are seperated by comma(,) in select statement.
  new syntax:
  select mandt, werks from t001w into table @data(it_table) USING CLIENT '110'.
  <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
- https://www.youtube.com/watch?v=T8ui2T0670k&list=PL-uGxwXIk4GDj1yUHofkm29u-qsFQf0Vw&index=8 
+ https://www.youtube.com/watch?v=T8ui2T0670k&list=PL-uGxwXIk4GDj1yUHofkm29u-qsFQf0Vw&index=8  <-- youtube video link (sapyard)
+ 
+ read table:
+ 
+ old syntax: 
+ it_itab
+ A    B   C
+ 1    2   3
+ 2    3   4
+ 
+ old syntax: 
+ read table it_itab into ls_itab with key a = 1 b = 2.  <-- captured the first record i.e <-- 1   2   3
+ 
+ new syntax:
+ wa = it_itab[ a = 1]
+ wa = it_itab[ a = 1 b = 2].
+ <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+ 
+ Filter- operator
+ -- it is an operator which can be used to filter out entries of the internal table based on certain conditions of columns and these filtered entries are put into the different table.
+ -- filter operator returns the internal table with filtered entries.
+ 
+ 
+ 
+ 
 
 
 
