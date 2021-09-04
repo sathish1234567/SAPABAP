@@ -1,0 +1,36 @@
+*§1.Set status of all cells to editable using the layout structure.
+    gs_layout-edit = 'X'.
+    
+*§2.Use SET_READY_FOR_INPUT to allow editing initially.
+*   (state "editable and ready for input").
+    CALL METHOD g_grid->set_ready_for_input
+          EXPORTING i_ready_for_input = 1.
+
+
+MODULE pai INPUT.
+  save_ok = ok_code.
+  clear ok_code.
+  CASE save_ok.
+    WHEN 'EXIT'.
+      PERFORM exit_program.
+    WHEN 'SWITCH'.
+      PERFORM switch_edit_mode.
+    WHEN OTHERS.
+*     do nothing
+  ENDCASE.
+ENDMODULE.
+
+
+
+based on alv button
+FORM switch_edit_mode.
+*§3.Use IS_READY_FOR_INPUT to fetch current substate of editable cells.
+  IF g_grid->is_ready_for_input( ) EQ 0.
+*§4.Use SET_READY_FOR_INPUT to switch between the substates.
+    CALL METHOD g_grid->set_ready_for_input
+                     EXPORTING i_ready_for_input = 1.
+  ELSE.
+    CALL METHOD g_grid->set_ready_for_input
+                     EXPORTING i_ready_for_input = 0.
+  ENDIF.
+ENDFORM.                               " SWITCH_EDIT_MODE
