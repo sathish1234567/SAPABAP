@@ -1,0 +1,28 @@
+write this code in  event handler method on refresh button.
+CALL METHOD cl_gui_cfw=>set_new_ok_code
+      EXPORTING
+        new_code = 'REFRESH'
+*      IMPORTING
+*        rc       =
+
+
+write : based on ok_Code
+
+if ok_code = 'REFRESH'.
+FORM refresh_alv  USING  p_grid_name TYPE REF TO cl_gui_alv_grid..
+* define local data
+  DATA:ls_stable TYPE lvc_s_stbl.
+  ls_stable-row = abap_true.
+  ls_stable-col = abap_true.
+  CALL METHOD p_grid_name->refresh_table_display
+    EXPORTING
+      is_stable = ls_stable
+    EXCEPTIONS
+      finished  = 1
+      OTHERS    = 2.
+  IF sy-subrc <> 0.
+* MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+*            WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+  ENDIF.
+ENDFORM.                    " REFRESH_ALV
+ENDIF.
