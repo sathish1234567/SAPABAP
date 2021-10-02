@@ -1,0 +1,51 @@
+FORM user_command  USING pc_ucomm LIKE sy-ucomm
+                      pc_selfield TYPE slis_selfield.
+WHEN '&REJ'.
+      PERFORM update_reject.
+      pc_selfield-refresh = 'X'.
+      pc_selfield-col_stable = 'X' .
+      pc_selfield-row_stable = 'X' .                      
+ENDFORM.                      
+FORM update_reject .
+  DATA : lt_disc  TYPE TABLE OF zsddisc,
+         ls_disc  TYPE zsddisc,
+         ref_grid TYPE REF TO cl_gui_alv_grid,
+         gd_valid TYPE c,
+         w_x      VALUE 'X'.
+
+
+  IF ref_grid IS INITIAL.
+    CALL FUNCTION 'GET_GLOBALS_FROM_SLVC_FULLSCR'
+      IMPORTING
+        e_grid = ref_grid.
+  ENDIF.
+  IF NOT ref_grid IS INITIAL.
+    CALL METHOD ref_grid->check_changed_data
+      IMPORTING
+        e_valid   = gd_valid
+      CHANGING
+        c_refresh = w_x.
+  ENDIF.
+  CLEAR:ls_disc,lt_disc.
+  CLEAR:ls_disc,lt_disc.
+  LOOP AT t_final2 INTO fs_final2 WHERE check EQ 'X'.
+    MOVE-CORRESPONDING fs_final2 TO ls_disc.
+    UPDATE zsddisc SET reject = abap_true
+                       aernam  = sy-uname
+                       aerdat  = sy-datum
+                   WHERE lcount = ls_disc-lcount AND
+                         vkorg = ls_disc-vkorg AND
+                         vtweg = ls_disc-vtweg AND
+                         spart = ls_disc-spart AND
+                         kunnr = ls_disc-kunnr AND
+                         kunwe = ls_disc-kunwe AND
+                         datbi = ls_disc-datbi.
+    IF sy-subrc EQ 0.
+      COMMIT WORK.
+    ENDIF.
+    CLEAR:ls_disc.
+  ENDLOOP.
+  DELETE t_final2 WHERE check EQ abap_true.
+  MESSAGE 'Data updated successfully.' TYPE 'S'.
+*  LEAVE TO SCREEN 0.
+ENDFORM.
