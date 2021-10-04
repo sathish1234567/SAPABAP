@@ -1,0 +1,159 @@
+FUNCTION z_digi_print.
+*"----------------------------------------------------------------------
+*"*"Local Interface:
+*"  IMPORTING
+*"     VALUE(IV_MODE) TYPE  CHAR10
+*"     VALUE(IV_VBELN) TYPE  VBELN_VF OPTIONAL
+*"     VALUE(IT_MAIL) TYPE  RSPREC_T_EMAIL OPTIONAL
+*"     VALUE(BULKPDF) TYPE  CHAR10 OPTIONAL
+*"  EXPORTING
+*"     VALUE(E_RETURN) TYPE  BAPIRET2
+*"     VALUE(E_PDF) TYPE  XSTRING
+*"----------------------------------------------------------------------
+  IF iv_vbeln IS NOT INITIAL.
+*    DATA: lt_upldtable TYPE sbdst_content.
+    DATA : i_name      LIKE thead-tdname,
+           gv_ret      TYPE string,
+           lw_dir      TYPE string,
+           lw_filename TYPE string,
+           l_len       TYPE i,
+           lv_lines    TYPE sy-tfill.
+
+
+
+    CONCATENATE 'SIGNED' iv_vbeln INTO i_name.
+
+    IMPORT lt_upldtable = lt_upldtable FROM DATABASE yrtlinv_archive(if) ID i_name.
+
+    IF lt_upldtable[] IS NOT INITIAL.
+      IF iv_mode = 'XSTRING'.
+
+
+        DESCRIBE TABLE lt_upldtable LINES lv_lines.
+        READ TABLE lt_upldtable INTO lw_upldtable INDEX lv_lines.
+        l_len = xstrlen( lw_upldtable-line ).
+        l_len = l_len + ( lv_lines - 1 ) * 1022.
+
+
+        CALL FUNCTION 'SCMS_BINARY_TO_XSTRING'
+          EXPORTING
+            input_length = l_len
+          IMPORTING
+            buffer       = e_pdf
+          TABLES
+            binary_tab   = lt_upldtable
+          EXCEPTIONS
+            failed       = 1
+            OTHERS       = 2.
+        IF sy-subrc <> 0.
+          e_return-type = sy-msgty.
+          MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+                        WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4 INTO e_return-message.
+        ENDIF.
+
+
+      ELSEIF iv_mode = 'PRINT' OR iv_mode = 'DIS' OR iv_mode = 'PDF' OR iv_mode = 'FTP'.
+
+        IF iv_mode = 'PDF'.
+          IF bulkpdf IS INITIAL.
+            CONCATENATE 'C:\' sy-datum '\' iv_vbeln '.PDF' INTO lw_filename.
+          ELSE.
+            CONCATENATE 'C:\' bulkpdf '\' iv_vbeln '.PDF' INTO lw_filename.
+          ENDIF.
+        ELSE.
+          cl_gui_frontend_services=>get_sapgui_workdir(
+           CHANGING
+             sapworkdir            = lw_dir
+           EXCEPTIONS
+             get_sapworkdir_failed = 1
+             cntl_error            = 2
+             error_no_gui          = 3
+             not_supported_by_gui  = 4
+             OTHERS                = 5
+                ).
+          IF sy-subrc <> 0.
+            e_return-type    = 'E'.
+            e_return-message  = 'Failed: Work directory not found'.
+            RETURN.
+          ENDIF.
+          CLEAR lw_filename.
+          CONCATENATE lw_dir '\'
+                      i_name '.pdf'
+                      INTO lw_filename.
+
+        ENDIF.
+
+        CALL METHOD cl_gui_frontend_services=>gui_download
+          EXPORTING
+            filename = lw_filename
+            filetype = 'BIN'
+          CHANGING
+            data_tab = lt_upldtable
+          EXCEPTIONS
+            OTHERS   = 01.
+
+        IF iv_mode = 'PRINT'.
+          CALL FUNCTION 'Z_PRINT_PDF_USING_PRINTPDF'
+            EXPORTING
+              ifname    = lw_filename
+              i_delfile = abap_true
+            IMPORTING
+              e_ret     = gv_ret.
+        ELSEIF iv_mode = 'PDF'.
+        ELSEIF iv_mode = 'FTP'.
+          PERFORM ftp_file TABLES lt_upldtable USING iv_vbeln.
+        ELSE.
+          APPEND lw_filename TO gt_file.
+          CALL   SCREEN '9002'.
+*          CALL FUNCTION 'WS_EXECUTE'
+*            EXPORTING
+*              commandline = lw_filename
+*              program     = 'AcroRd32.exe'.
+        ENDIF.
+      ENDIF.
+    ENDIF.
+  ENDIF.
+
+
+ENDFUNCTION.
+
+
+
+
+9002 - Code
+MODULE status_9002 OUTPUT.
+  DATA: lv_url TYPE char255.
+  SET PF-STATUS '9002'.
+  SET TITLEBAR '9002'.
+
+  CREATE OBJECT g_html_container
+    EXPORTING
+      container_name = 'PDF'.
+
+  CREATE OBJECT g_html_control
+    EXPORTING
+      parent = g_html_container.
+
+
+
+* Load the HTML
+  CALL METHOD g_html_control->load_data(
+    EXPORTING
+      type                 = 'application'
+      subtype              = 'pdf'
+    IMPORTING
+      assigned_url         = lv_url
+    CHANGING
+      data_table           = lt_upldtable
+    EXCEPTIONS
+      dp_invalid_parameter = 1
+      dp_error_general     = 2
+      cntl_error           = 3
+      OTHERS               = 4 ).
+
+* Show it
+  CALL METHOD g_html_control->show_url(
+      url      = lv_url
+      in_place = 'X' ).
+
+ENDMODULE.
