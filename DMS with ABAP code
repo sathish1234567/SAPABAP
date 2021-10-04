@@ -1,0 +1,133 @@
+*"----------------------------------------------------------------------
+*"*"Local Interface:
+*"  IMPORTING
+*"     VALUE(IV_DMSNO) TYPE  DOKNR
+*"     VALUE(IV_FILENAME) TYPE  CHAR200
+*"  EXPORTING
+*"     VALUE(EV_FILECONTENT) TYPE  XSTRING
+*"     VALUE(ET_RETURN) TYPE  BAPIRET2_TTY
+*"     VALUE(EV_MIMETYPE) TYPE  W3CONTTYPE
+*"----------------------------------------------------------------------
+
+  DATA :  ls_draw       TYPE draw,
+          lv_filep      TYPE filep,
+          lv_dappl      TYPE dappl,
+          ls_file_check TYPE cvapi_doc_file,
+          ls_file       TYPE cvapi_doc_file,
+          ls_message    TYPE messages,
+          ls_xdata      TYPE x LENGTH 2550,
+          ls_content    TYPE drao,
+          lv_mime       TYPE tdwp-mimetype,
+          lv_size       TYPE i,
+          lv_werks      TYPE werks_d,
+          lv_text       TYPE bapi_msg,
+          lv_type       TYPE char1.
+
+  DATA : lt_xdata      TYPE TABLE OF orblk,
+         lt_file_check TYPE STANDARD TABLE OF cvapi_doc_file,
+         lt_content    TYPE STANDARD TABLE OF drao,
+         lt_file       TYPE STANDARD TABLE OF cvapi_doc_file.
+
+  FIELD-SYMBOLS : <fs_file> TYPE cvapi_doc_file.
+
+  CLEAR ls_draw.
+  ls_draw-dokar  = 'ZVI' .
+  ls_draw-dokvr  = '00'.
+  ls_draw-doktl  = '000'.
+  CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+    EXPORTING
+      input  = iv_dmsno
+    IMPORTING
+      output = iv_dmsno.
+
+  CALL FUNCTION 'CVAPI_DOC_GETDETAIL'
+    EXPORTING
+*     PF_BATCHMODE    = ' '
+*     PF_HOSTNAME     = ' '
+      pf_dokar        = ls_draw-dokar
+      pf_doknr        = iv_dmsno
+      pf_dokvr        = ls_draw-dokvr
+      pf_doktl        = ls_draw-doktl
+*     PF_READ_DRAD    = ' '
+*     PF_READ_DRAP    = ' '
+*     PF_ACTIVE_FILES = ' '
+*     PF_READ_COMP    = ' '
+*     PF_READ_KPRO    = 'X'
+*     PF_READ_DRAT    = 'X'
+    IMPORTING
+      psx_draw        = ls_draw
+*     PFX_DESCRIPTION =
+    TABLES
+      pt_files        = lt_file
+*     PT_COMP         =
+*     PT_DRAP         =
+*     PT_DRAD         =
+*     PT_DRAT         =
+    EXCEPTIONS
+      not_found       = 1
+      no_auth         = 2
+      error           = 3
+      OTHERS          = 4.
+  IF sy-subrc = 0.
+    DELETE lt_file WHERE filename NS iv_filename.
+    READ TABLE lt_file INTO ls_file INDEX 1.
+    IF sy-subrc = 0 .
+      lv_filep = ls_file-filename.
+      lv_dappl = ls_file-dappl.
+      CALL FUNCTION 'CV120_GET_MIME_TYPE'
+        EXPORTING
+          pf_dappl     = lv_dappl
+          pf_file      = lv_filep
+        IMPORTING
+          pfx_mimetype = lv_mime.
+      IF NOT lv_mime IS INITIAL.
+        ev_mimetype = lv_mime.
+      ENDIF.
+    ENDIF.
+    CALL FUNCTION 'CVAPI_DOC_CHECKOUTVIEW'
+      EXPORTING
+        pf_dokar           = ls_draw-dokar
+        pf_doknr           = iv_dmsno
+        pf_dokvr           = ls_draw-dokvr
+        pf_doktl           = ls_draw-doktl
+*       PF_FTP_DEST        = ' '
+*       PF_HTTP_DEST       = ' '
+*       PF_HOSTNAME        = ' '
+        pf_content_provide = 'TBL'
+*       PS_API_CONTROL     =
+*       PF_STD_URL         = 'X'
+      IMPORTING
+        psx_message        = ls_message
+        psx_draw           = ls_draw
+      TABLES
+        pt_files           = lt_file
+*       PTX_COMPONENTS     =
+        ptx_content        = lt_content.
+  ENDIF.
+  CLEAR lv_size.
+  LOOP AT lt_content INTO ls_content.
+    ls_xdata = ls_content-orblk.
+    APPEND ls_xdata TO lt_xdata.
+    CLEAR ls_xdata.
+    lv_size = ls_content-orln.
+  ENDLOOP.
+  IF lt_xdata[] IS NOT INITIAL.
+    CALL FUNCTION 'SCMS_BINARY_TO_XSTRING'
+      EXPORTING
+        input_length = lv_size
+*       FIRST_LINE   = 0
+*       LAST_LINE    = 0
+      IMPORTING
+        buffer       = ev_filecontent
+      TABLES
+        binary_tab   = lt_xdata.
+  ENDIF.
+  IF ev_filecontent IS INITIAL.
+    CLEAR gs_return.
+    gs_return-type = 'E'.
+    gs_return-message = 'No file content found'(003).
+    APPEND gs_return TO et_return.
+    EXIT.
+  ENDIF.
+
+ENDFUNCTION.
