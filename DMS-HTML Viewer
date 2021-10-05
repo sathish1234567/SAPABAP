@@ -120,6 +120,16 @@ ENDFUNCTION.
 
 
 
+DATA : g_html_container TYPE REF TO cl_gui_custom_container,
+       g_html_control   TYPE REF TO cl_gui_html_viewer.
+
+DATA: lt_upldtable TYPE sbdst_content.
+DATA: lw_upldtable TYPE BAPICONTEN.
+
+DATA:gt_file TYPE cnvom_t_string.
+
+
+
 9002 - Code
 MODULE status_9002 OUTPUT.
   DATA: lv_url TYPE char255.
