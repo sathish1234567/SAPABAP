@@ -167,3 +167,50 @@ MODULE status_9002 OUTPUT.
       in_place = 'X' ).
 
 ENDMODULE.
+<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+Coding ExampleLocate this document in the navigation structure
+Use
+This extract represents only the steps listed in Using the Document Viewer , and does not include tasks such as retrieving a document from the BDS. It assumes that you are going to display a document in a SAP Custom Container on screen 100 of a program. You would have to create the Custom Container area in the Screen Painter. We have called the container 'CONTAINER100'.
+
+Note
+For precise details of the methods, refer to the individual method documentation. For details of how to use SAP Container controls, refer to the SAP Container documentation.
+
+Data Declarations
+
+You must declare the following data objects in your program:
+
+DATA: custom_container TYPE REF TO cl_gui_custom_container,
+document_viewer  TYPE REF TO i_oi_document_viewer.
+            
+Instantiating the Container and Document Viewer
+
+This is best done in a PBO module. It must only happen once . You can ensure this by checking whether one of the controls (for example, custom_container ) is still initial, and only executing the following statements if it is.
+
+IF custom_container IS INITIAL.
+CREATE OBJECT custom_container
+EXPORTING container_name = 'CONTAINER100'.
+
+CALL METHOD C_OI_CONTAINER_CONTROL_CREATOR=>GET_DOCUMENT_VIEWER
+IMPORTING viewer = document_viewer.
+
+CALL METHOD document_viewer->init_viewer
+EXPORTING parent = custom_container.
+
+ENDIF.
+            
+Loading the Document
+
+You can do this either in the PBO module or in the PAI event in reaction to a user action.
+
+CALL METHOD document_viewer->view_document_from_url
+EXPORTING document_url = <url of the document>
+show_inplace = 'X'.
+            
+Destroying the Control
+
+CALL METHOD document_viewer->destroy_viewer.
+CALL METHOD custom_container->free.
+FREE: document_viewer, custom_container.
+            
