@@ -1,0 +1,41 @@
+PERFORM ms_e USING 'Select only 1 Shipment' space space space.
+
+FORM ms_e USING message_v1
+                message_v2
+                message_v3
+                message_v4
+                .
+  gv_error = abap_true.
+  CALL FUNCTION 'MESSAGES_ACTIVE'
+    EXCEPTIONS
+      not_active = 1.
+
+  IF sy-subrc = 1.
+    DATA gd_identification TYPE sy-uzeit.
+
+    CALL FUNCTION 'MESSAGES_INITIALIZE'
+      EXPORTING
+        check_on_commit  = ' '
+      IMPORTING
+        e_identification = gd_identification.
+  ENDIF.
+
+  CALL FUNCTION 'MESSAGE_STORE'
+    EXPORTING
+      arbgb                   = 'ZLOG' "arbgb
+*     exception_if_not_active = exception_if_not_active
+      msgty                   = 'E'  "msgty
+      msgv1                   = message_v1  "msgv1
+      msgv2                   = message_v2            "msgv2
+      msgv3                   = message_v3            "msgv3
+      msgv4                   = message_v4            "msgv4
+      txtnr                   = '040'            "txtnr
+    EXCEPTIONS
+      not_active              = 1.
+  IF sy-subrc <> 0.
+    MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+            WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+  ENDIF.
+
+
+ENDFORM.                    " MESSAGE_STORE
