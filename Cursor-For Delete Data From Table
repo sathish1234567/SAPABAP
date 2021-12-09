@@ -1,0 +1,105 @@
+
+DATA gv_cursor TYPE cursor.
+DATA lt_security_context TYPE TABLE OF security_context.
+DATA gv_deleted TYPE char1.
+DATA gv_ldate TYPE sydatum.
+DATA gv_hdate TYPE sydatum.
+DATA gr_tmstmp TYPE RANGE OF security_context_creation_time WITH HEADER LINE.
+
+
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE text-000.
+
+PARAMETERS : p1 RADIOBUTTON GROUP 1 DEFAULT 'X' USER-COMMAND cm1,  " security_context table
+             p2 RADIOBUTTON GROUP 1 MODIF ID nd,                               " usage table
+             p3 RADIOBUTTON GROUP 1 MODIF ID nd.                               " infosec track table
+
+PARAMETERS p_pack TYPE i DEFAULT 10000 OBLIGATORY.
+PARAMETERS : s_date TYPE syst-datum ."OBLIGATORY.
+SELECTION-SCREEN END OF BLOCK b1.
+
+AT SELECTION-SCREEN OUTPUT.
+  LOOP AT SCREEN.
+    IF screen-group1 = 'ND'.
+      screen-input = 0.
+      screen-invisible = 1.
+    ENDIF.
+    MODIFY SCREEN.
+  ENDLOOP.
+
+AT SELECTION-SCREEN .
+  IF p1 IS INITIAL AND p2 IS INITIAL AND p3 IS INITIAL.
+    MESSAGE e001(00) WITH 'Select atleast one table to delete the data'.
+  ELSEIF NOT p2 IS INITIAL.
+    MESSAGE e001(00) WITH 'Not implemented'.
+  ELSEIF NOT p3 IS INITIAL.
+    MESSAGE e001(00) WITH 'Not implemented'.
+  ENDIF.
+  IF p_pack > 10000.
+    MESSAGE e001(00) WITH 'Packet size should not exceed to 10000'.
+  ENDIF.
+  IF sy-datum - s_date < 2 AND
+     NOT s_date IS INITIAL.
+    MESSAGE e001(00) WITH 'Date range exceeded'.
+  ENDIF.
+
+START-OF-SELECTION.
+  IF NOT p1 IS INITIAL.           " security context table
+    IF s_date IS INITIAL.
+      " if we will not get any date from selection, by default we are deleting 2 days data.
+      s_date = sy-datum - 2.
+      gr_tmstmp-low = s_date.
+      CONVERT DATE gr_tmstmp-low
+      TIME '235959'
+      INTO TIME STAMP
+      gr_tmstmp-low
+      TIME ZONE 'INDIA'.
+      gr_tmstmp-option = 'LT'.
+      gr_tmstmp-sign = 'I'.
+      APPEND gr_tmstmp.
+    ELSE.
+      gr_tmstmp-low = s_date.
+      CONVERT DATE gr_tmstmp-low
+      TIME '235959'
+      INTO TIME STAMP
+      gr_tmstmp-low
+      TIME ZONE 'INDIA'.
+      gr_tmstmp-option = 'LT'.
+      gr_tmstmp-sign = 'I'.
+      APPEND gr_tmstmp.
+    ENDIF.
+    IF gr_tmstmp IS INITIAL.
+      MESSAGE i001(00) WITH 'Date should be mandatory' .
+      LEAVE LIST-PROCESSING.
+    ENDIF.
+    OPEN CURSOR WITH HOLD gv_cursor FOR
+         SELECT * FROM security_context CLIENT SPECIFIED
+         WHERE client = sy-mandt AND
+               start_timestamp IN gr_tmstmp[]
+               %_HINTS ORACLE 'INDEX("SECURITY_CONTEXT" "SECURITY_CONTEXT~ZST")'.
+    DO.
+      TRY.
+          FETCH NEXT CURSOR gv_cursor INTO TABLE lt_security_context
+                                      PACKAGE SIZE p_pack.
+          IF sy-subrc NE 0.
+            CLOSE CURSOR gv_cursor.
+            CLEAR sy-subrc.
+            EXIT.
+          ELSE.
+            IF lt_security_context IS NOT INITIAL.
+              DELETE security_context FROM TABLE lt_security_context.
+              REFRESH:lt_security_context[].
+              gv_deleted = abap_true.
+              CALL FUNCTION 'DB_COMMIT' .
+            ENDIF.
+          ENDIF.
+        CATCH cx_root.
+          EXIT.
+      ENDTRY.
+    ENDDO.
+    IF gv_deleted = abap_true.
+      MESSAGE s001(00) WITH 'Data deleted succesfully from table-' 'SECURITY_CONTEXT'.
+    ELSE.
+      MESSAGE i001(00) WITH 'No data found in table-' 'SECURITY_CONTEXT' .
+      LEAVE LIST-PROCESSING.
+    ENDIF.
+  ENDIF.
