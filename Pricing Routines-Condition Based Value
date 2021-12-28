@@ -1,0 +1,66 @@
+FORM FRM_KOND_BASIS_909.
+*{   INSERT         DEVK917166                                        1
+*BREAK-POINT.
+  FIELD-SYMBOLS <fs> TYPE ANY TABLE.
+  DATA lv_cond TYPE char40 VALUE 'VBELN = <LT_XKOMFK>-VBELN'.
+  DATA lc_xkomfk TYPE char40 . "VALUE '(SAPMV60A)XKOMFK[]'.
+  DATA  lt_lips TYPE TABLE OF lips.
+  DATA ls_lips TYPE lips.
+DATA ls_ekko TYPE ekko.
+DATA lt_a991 TYPE TABLE OF a991.
+DATA ls_a991 TYPE a991.
+DATA ls_konp TYPE konp.
+  FIELD-SYMBOLS: <lt_xkomfk> TYPE STANDARD TABLE.
+  lc_xkomfk = '(SAPMV60A)XKOMFK[]'.
+  ASSIGN (lc_xkomfk) TO <lt_xkomfk>.
+
+*data ls_lips type lips.
+  IF <lt_xkomfk> IS ASSIGNED.
+    SELECT * FROM lips
+             INTO TABLE lt_lips
+             FOR ALL ENTRIES IN <lt_xkomfk>
+             WHERE (lv_cond).
+    IF sy-subrc EQ 0.
+      SORT lt_lips BY vgpos.
+      DELETE ADJACENT DUPLICATES FROM lt_lips COMPARING vgpos.
+      READ TABLE lt_lips INTO ls_lips
+                 WITH KEY matnr = komp-matnr
+                          posnr = komp-kposn.
+      IF sy-subrc EQ 0.
+        SELECT SINGLE * FROM ekko
+                 INTO ls_ekko
+                 WHERE ebeln = ls_lips-vgbel.
+        IF sy-subrc EQ 0.
+          SELECT * FROM a991
+                   INTO TABLE lt_a991
+                   WHERE vkorg = ls_ekko-ekorg AND
+                         matnr = komp-matnr AND
+                         kschl = 'ZMRP' AND
+                         kappl = 'V' AND
+                         datbi GE sy-datum AND
+                         datab LT sy-datum.
+          IF sy-subrc EQ 0.
+*            sort lt_A991 by datbi DESCENDING.
+            READ TABLE lt_a991 INTO ls_a991
+            INDEX 1.
+            if sy-subrc eq 0.
+            SELECT SINGLE * FROM konp
+                   INTO ls_konp
+                   WHERE knumh = ls_a991-knumh AND
+                         kappl = 'V'." amd
+*                         kschl =,
+            IF sy-subrc EQ 0.
+              IF xkomv-kschl = 'SMRP'.
+                xkomv-kbetr = ls_konp-kbetr.
+*                xkomv-kwert = ls_konp-kbetr * ls_lips-lfimg.
+              ENDIF.
+            ENDIF.
+            endif.
+          ENDIF.
+        ENDIF.
+      ENDIF.
+    ENDIF.
+  ENDIF.
+  sy-subrc = 0.
+*}   INSERT
+ENDFORM.
