@@ -1,0 +1,16 @@
+    IF cust_num IS INITIAL.
+*      MESSAGE e024(zcmr_msg_cls) WITH wa_heads-division.
+        CALL FUNCTION 'MESSAGES_INITIALIZE'. "clear the buffer messages
+
+        CALL FUNCTION 'MESSAGE_STORE'            "add your message
+          EXPORTING
+            arbgb = 'ZCMR_MSG_CLS'
+            msgty = 'E'
+            txtnr = 024
+            msgv1 = wa_heads-division
+            msgv2 = '9000'.
+
+        CALL FUNCTION 'MESSAGES_SHOW'.
+
+        CALL FUNCTION 'MESSAGES_INITIALIZE'.
+      ENDIF.
