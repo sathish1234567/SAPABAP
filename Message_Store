@@ -39,3 +39,19 @@ FORM ms_e USING message_v1
 
 
 ENDFORM.                    " MESSAGE_STORE
+
+
+FORM messages .
+  DATA: gw_msg_count TYPE sy-tabix.
+  gw_msg_count = 0.
+
+  CALL FUNCTION 'MESSAGES_COUNT'
+    IMPORTING
+      count = gw_msg_count.
+
+  IF gw_msg_count NE 0.
+    CALL FUNCTION 'MESSAGES_SHOW'.
+  ENDIF.
+
+  CALL FUNCTION 'MESSAGES_INITIALIZE'.
+ENDFORM.                    "messages
