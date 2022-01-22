@@ -3,7 +3,10 @@ FORM FRM_KOND_BASIS_909.
 *BREAK-POINT.
   FIELD-SYMBOLS <fs> TYPE ANY TABLE.
   DATA lv_cond TYPE char40 VALUE 'VBELN = <LT_XKOMFK>-VBELN'.
+  DATA lv_cond1 TYPE char40 VALUE 'KOMP-MATNR'.
+  DATA lv_cond2 TYPE char40 VALUE 'KOMP-KPOSN'.
   DATA lc_xkomfk TYPE char40 . "VALUE '(SAPMV60A)XKOMFK[]'.
+  DATA lc_xvbrp TYPE char40 . "VALUE '(SAPMV60A)XKOMFK[]'.
   DATA  lt_lips TYPE TABLE OF lips.
   DATA ls_lips TYPE lips.
 DATA ls_ekko TYPE ekko.
@@ -11,11 +14,20 @@ DATA lt_a991 TYPE TABLE OF a991.
 DATA ls_a991 TYPE a991.
 DATA ls_konp TYPE konp.
   FIELD-SYMBOLS: <lt_xkomfk> TYPE STANDARD TABLE.
+  FIELD-SYMBOLS: <lt_xvbrp> TYPE STANDARD TABLE.
+  FIELD-SYMBOLS: <ls_xvbrp> type any.
+  FIELD-SYMBOLS: <xkomv> type komv_index.
   lc_xkomfk = '(SAPMV60A)XKOMFK[]'.
+  lc_xvbrp = '(SAPMV60A)XVBRP[]'.
   ASSIGN (lc_xkomfk) TO <lt_xkomfk>.
+  ASSIGN (lc_xvbrp) TO <lt_xvbrp>.
 
 *data ls_lips type lips.
-  IF <lt_xkomfk> IS ASSIGNED.
+  IF <lt_xkomfk> IS ASSIGNED and sy-tcode = 'VF01'.
+
+    READ TABLE <lt_xkomfk> TRANSPORTING NO FIELDS
+               INDEX 1.
+    if sy-subrc eq 0.
     SELECT * FROM lips
              INTO TABLE lt_lips
              FOR ALL ENTRIES IN <lt_xkomfk>
@@ -51,16 +63,76 @@ DATA ls_konp TYPE konp.
 *                         kschl =,
             IF sy-subrc EQ 0.
               IF xkomv-kschl = 'SMRP'.
+*                ykbetr = xkomv-kbetr = ls_konp-kbetr.
                 xkomv-kbetr = ls_konp-kbetr.
-*                xkomv-kwert = ls_konp-kbetr * ls_lips-lfimg.
+*                xkwert = xkomv-kwert = ls_konp-kbetr * ( ( komp-mgame / 1000 ) * 1000 ).
+                xkomv-kwert = ls_konp-kbetr * ( ( komp-mgame / 1000 ) * 1000 ).
               ENDIF.
             ENDIF.
             endif.
+
           ENDIF.
+
         ENDIF.
       ENDIF.
+
     ENDIF.
+
   ENDIF.
+  elseif sy-tcode = 'VF02' or sy-tcode = 'VF03'.
+*    ASSIGN COMPONENT 'AUBEL' of structure
+    data lv_matnr type char10 value 'MATNR'.
+    data lv_aupos type char10 value 'AUPOS'.
+    FIELD-SYMBOLS <lv_val> type any.
+    if <lt_xvbrp> is ASSIGNED.
+       READ TABLE <lt_xvbrp> ASSIGNING <ls_xvbrp>
+            WITH key (lv_matnr) = komp-matnr
+                     (lv_aupos) = komp-kposn.
+       if <ls_xvbrp> is ASSIGNED.
+         ASSIGN COMPONENT 'AUBEL' OF STRUCTURE <ls_xvbrp>  TO <lv_val>.
+         if <lv_val> is ASSIGNED.
+          SELECT SINGLE * FROM ekko
+                 INTO ls_ekko
+                 WHERE ebeln = <lv_val>.
+        IF sy-subrc EQ 0.
+          SELECT * FROM a991
+                   INTO TABLE lt_a991
+                   WHERE vkorg = ls_ekko-ekorg AND
+                         matnr = komp-matnr AND
+                         kschl = 'ZMRP' AND
+                         kappl = 'V' AND
+                         datbi GE sy-datum AND
+                         datab LT sy-datum.
+          IF sy-subrc EQ 0.
+*            sort lt_A991 by datbi DESCENDING.
+            READ TABLE lt_a991 INTO ls_a991
+            INDEX 1.
+            if sy-subrc eq 0.
+            SELECT SINGLE * FROM konp
+                   INTO ls_konp
+                   WHERE knumh = ls_a991-knumh AND
+                         kappl = 'V'." amd
+*                         kschl =,
+            IF sy-subrc EQ 0.
+              IF xkomv-kschl = 'SMRP'.
+*                ykbetr = xkomv-kbetr = ls_konp-kbetr.
+                xkomv-kbetr = ls_konp-kbetr.
+*                lv_val = komp-mgame.
+*                xkwert = xkomv-kwert = ls_konp-kbetr * ( ( komp-mgame / 1000 ) * 1000 ).
+                xkomv-kwert = ls_konp-kbetr * ( ( komp-mgame / 1000 ) * 1000 ).
+              ENDIF.
+            ENDIF.
+            endif.
+
+          ENDIF.
+
+        ENDIF.
+        endif.
+       endif.
+    endif.
+  endif.
   sy-subrc = 0.
 *}   INSERT
 ENDFORM.
+
+RV80HGEN -- Report program we need to execute it when the routine execute in QAS/PRD, need to activate the routines globally in QAS/PRD
