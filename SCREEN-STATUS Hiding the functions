@@ -1,0 +1,39 @@
+DATA lt_functions TYPE TABLE OF rsmpe_funl.
+  DATA wa_function  LIKE LINE OF lt_functions.
+  DATA lv_prog LIKE sy-repid.
+  DATA lv_status_name TYPE string.
+* 2 different stati depending on wheter the dynpro is called as popup or not
+  IF gv_show_as_popup = abap_true.
+    lv_status_name = 'Zxx_DIALOG'.
+  ELSE.
+    lv_status_name = 'Zxx_STATUS'.
+  ENDIF.
+
+* if entry is locked,hide all buttons except the exit button
+  IF gv_display_only = abap_true.
+
+    lv_prog = sy-repid.
+
+    CALL FUNCTION 'RS_CUA_GET_STATUS_FUNCTIONS'
+         EXPORTING
+              program           = lv_prog
+              status            = lv_status_name
+*             language          = sy-langu
+         TABLES
+              function_list     = lt_functions
+         EXCEPTIONS
+              menu_not_found    = 1
+              program_not_found = 2
+              status_not_found  = 3
+              OTHERS            = 4.
+    IF sy-subrc <> 0.
+      MESSAGE i026.
+    ELSE.
+*     add all FCODEs except EXIT to excluding-itab.
+      LOOP AT lt_functions INTO wa_function WHERE fcode <> 'EXIT'.
+        APPEND wa_function-fcode TO gt_hide_functions.
+      ENDLOOP.
+    ENDIF.
+  ENDIF.
+
+  SET PF-STATUS lv_status_name EXCLUDING gt_hide_functions.
