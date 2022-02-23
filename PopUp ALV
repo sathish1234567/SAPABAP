@@ -1,0 +1,134 @@
+FORM get_mblnr_popup .
+  DATA: ws_field(30),
+     ws_line TYPE i.
+  TYPES : BEGIN OF lty_popout,
+            mjahr TYPE mjahr,
+            mblnr TYPE mblnr,
+          END OF lty_popout.
+  DATA lt_popout TYPE TABLE OF lty_popout.
+  DATA ls_popout TYPE lty_popout.
+  DATA lv_string TYPE char80.
+  DATA lt_fcat TYPE slis_t_fieldcat_alv.
+  DATA ls_fcat TYPE slis_fieldcat_alv.
+
+  GET CURSOR FIELD ws_field LINE ws_line.
+  BREAK-POINT.
+  IF ws_field = 'GS_ITEM-MBLNR'.
+    READ TABLE gt_item INTO gs_item INDEX ws_line.
+    CLEAR gs_mseg.
+    REFRESH lt_fcat.
+    ls_fcat-fieldname = 'MJAHR'.
+    ls_fcat-seltext_s = 'FY'.
+    ls_fcat-seltext_m = 'FY'.
+    ls_fcat-seltext_l = 'FY'.
+    APPEND ls_fcat TO lt_fcat.
+
+    ls_fcat-fieldname = 'MBLNR'.
+    ls_fcat-seltext_s = 'Material Doc'.
+    ls_fcat-seltext_m = 'Material Doc'.
+    ls_fcat-seltext_l = 'Material Doc'.
+    APPEND ls_fcat TO lt_fcat.
+    REFRESH lt_popout.
+    LOOP AT gt_mseg INTO gs_mseg
+                    WHERE matnr = gs_item-matnr AND
+                          werks = gs_aufk-werks AND
+                          charg = gs_item-charg.
+      CLEAR ls_popout.
+      ls_popout-mjahr = gs_mseg-mjahr.
+      ls_popout-mblnr = gs_mseg-mblnr.
+      APPEND ls_popout TO lt_popout.
+    ENDLOOP.
+    IF NOT lt_popout IS INITIAL.
+      SORT lt_popout DESCENDING BY mjahr mblnr.
+      CONCATENATE gs_item-matnr '/' gs_aufk-werks '/' gs_item-charg
+                  INTO lv_string.
+      CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+        EXPORTING
+*         I_INTERFACE_CHECK     = ' '
+*         I_BYPASSING_BUFFER    = ' '
+*         I_BUFFER_ACTIVE       = ' '
+*         I_CALLBACK_PROGRAM    = ' '
+*         I_CALLBACK_PF_STATUS_SET          = ' '
+*         I_CALLBACK_USER_COMMAND           = ' '
+*         I_CALLBACK_TOP_OF_PAGE            = ' '
+*         I_CALLBACK_HTML_TOP_OF_PAGE       = ' '
+*         I_CALLBACK_HTML_END_OF_LIST       = ' '
+*         I_STRUCTURE_NAME      =
+*         I_BACKGROUND_ID       = ' '
+*         I_GRID_TITLE          =
+*         I_GRID_SETTINGS       =
+*         IS_LAYOUT             =
+          it_fieldcat           = lt_fcat
+*         IT_EXCLUDING          =
+*         IT_SPECIAL_GROUPS     =
+*         IT_SORT               =
+*         IT_FILTER             =
+*         IS_SEL_HIDE           =
+*         I_DEFAULT             = 'X'
+*         I_SAVE                = ' '
+*         IS_VARIANT            =
+*         IT_EVENTS             =
+*         IT_EVENT_EXIT         =
+*         IS_PRINT              =
+*         IS_REPREP_ID          =
+          i_screen_start_column = 85
+          i_screen_start_line   = 2
+          i_screen_end_column   = 110
+          i_screen_end_line     = 9
+*         I_HTML_HEIGHT_TOP     = 0
+*         I_HTML_HEIGHT_END     = 0
+*         IT_ALV_GRAPHICS       =
+*         IT_HYPERLINK          =
+*         IT_ADD_FIELDCAT       =
+*         IT_EXCEPT_QINFO       =
+*         IR_SALV_FULLSCREEN_ADAPTER        =
+*           IMPORTING
+*         E_EXIT_CAUSED_BY_CALLER           =
+*         ES_EXIT_CAUSED_BY_USER            =
+        TABLES
+          t_outtab              = lt_popout[]
+*           EXCEPTIONS
+*         PROGRAM_ERROR         = 1
+*         OTHERS                = 2
+        .
+      IF sy-subrc <> 0.
+* Implement suitable error handling here
+      ENDIF.
+
+*          CALL FUNCTION 'REUSE_ALV_POPUP_TO_SELECT'
+*            EXPORTING
+*              i_title       = lv_string
+**             I_SELECTION   = 'X'
+**             I_ALLOW_NO_SELECTION          =
+*              i_zebra       = 'X'
+**             I_SCREEN_START_COLUMN         = 0
+**             I_SCREEN_START_LINE           = 0
+**             I_SCREEN_END_COLUMN           = 0
+**             I_SCREEN_END_LINE             = 0
+**             I_CHECKBOX_FIELDNAME          =
+**             I_LINEMARK_FIELDNAME          =
+**             I_SCROLL_TO_SEL_LINE          = 'X'
+*              i_tabname     = 'LT_POPOUT'
+**             I_STRUCTURE_NAME              =
+*              it_fieldcat   = lt_fcat
+**             IT_EXCLUDING  =
+**             I_CALLBACK_PROGRAM            =
+**             I_CALLBACK_USER_COMMAND       =
+**             IS_PRIVATE    =
+**            IMPORTING
+**             ES_SELFIELD   =
+**             E_EXIT        =
+*            TABLES
+*              t_outtab      = lt_popout
+*            EXCEPTIONS
+*              program_error = 1
+*              OTHERS        = 2.
+*          IF sy-subrc <> 0.
+** Implement suitable error handling here
+*          ENDIF.
+
+    ENDIF.
+*        mateialno/batch/aufnr --> fy
+  ENDIF.
+
+ENDFORM.
