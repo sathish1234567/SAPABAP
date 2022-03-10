@@ -1,0 +1,8 @@
+ CALL FUNCTION 'CALCULATE_HASH_FOR_RAW'
+        EXPORTING
+          alg  = 'MD5'
+          data = iv_xstring
+        IMPORTING
+          hash = lv_hash.
+         rv_file_checksum = lv_hash.
+           ev_len = xstrlen( iv_xstring ).
