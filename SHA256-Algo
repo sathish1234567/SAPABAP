@@ -1,0 +1,31 @@
+METHOD convert_hmac_sha256.
+  DATA:lv_concatenated_key  TYPE string,
+       lv_concatenated_key_x TYPE xstring,
+       lv_secure_key_x       TYPE xstring,
+       lv_key_x              TYPE xstring.
+
+
+  lv_concatenated_key =  |{ gv_access_key }:{ im_unxtime }|.
+  TRY.
+      lv_secure_key_x = cl_abap_hmac=>string_to_xstring( gv_secure_key ).
+    CATCH cx_abap_message_digest.
+  ENDTRY.
+
+  TRY .
+      cl_abap_hmac=>calculate_hmac_for_char(
+        EXPORTING
+          if_algorithm           = 'SHA256'          "'SHA1'           "Hash Algorithm
+          if_key                 = lv_secure_key_x   "HMAC Key
+          if_data                = lv_concatenated_key "'VY7I6ZTT1VA0Y4DELJIR:1621418096118'   "Data
+        IMPORTING
+          ef_hmacstring          =  ew_key ).
+    CATCH cx_abap_message_digest.
+  ENDTRY.
+  IF ew_key IS INITIAL.
+    ew_return-type = 'E'.
+    ew_return-message = 'Error in Encryption'(020).
+    CLEAR lv_key_x.
+    RETURN.
+  ENDIF.
+
+ENDMETHOD.
