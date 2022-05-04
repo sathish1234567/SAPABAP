@@ -1,0 +1,8 @@
+IF pt_otf[] IS INITIAL.
+    APPEND LINES OF pt_otfr TO pt_otf.
+  ELSE.
+    DELETE pt_otfr WHERE tdprintcom = '//'.
+    DESCRIBE TABLE pt_otf LINES lv_lines.
+*    lv_lines = lv_lines - 1.
+    INSERT LINES OF pt_otfr INTO pt_otf INDEX lv_lines.
+  ENDIF.
