@@ -1,0 +1,28 @@
+  IF xlpet EQ space.
+    CLEAR t052.
+    REFRESH zbtxt.
+    IF ekko-zterm EQ space.
+      t052-ztag1 = ekko-zbd1t.
+      t052-zprz1 = ekko-zbd1p.
+      t052-ztag2 = ekko-zbd2t.
+      t052-zprz2 = ekko-zbd2p.
+      t052-ztag3 = ekko-zbd3t.
+    ENDIF.
+
+    CALL FUNCTION 'FI_PRINT_ZTERM'
+      EXPORTING
+        i_zterm         = ekko-zterm
+        i_langu         = ekko-spras
+        i_xt052u        = ' '
+        i_t052          = t052
+      TABLES
+        t_ztext         = zbtxt
+      EXCEPTIONS
+        zterm_not_found = 01.
+
+    READ TABLE zbtxt INDEX 1.
+    IF sy-subrc EQ 0.
+      pekko-zbtxt = zbtxt-line.
+      DELETE zbtxt INDEX 1.
+    ENDIF.
+  ENDIF.
