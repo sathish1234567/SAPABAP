@@ -1,0 +1,47 @@
+*&---------------------------------------------------------------------*
+*& Form GET_FBL3N_DETAILS
+*&---------------------------------------------------------------------*
+FORM get_fbl3n_details  CHANGING p_fbl3n_data TYPE ty_fbl3n_data_t.
+
+DATA: lr_pay_data TYPE REF TO data.
+FIELD-SYMBOLS  : <lt_pay_data> TYPE ANY TABLE .
+
+*Get Internal Table from ALV
+  cl_salv_bs_runtime_info=>set(    EXPORTING display  = abap_false
+                                             metadata = abap_false
+data     = abap_true ).
+IF s_qscod IS NOT INITIAL.
+SELECT wt_withcd,
+      CAST( wt_withcd AS CHAR( 3 ) )  AS komok FROM t059z INTO TABLE @DATA(lt_code) WHERE qscod IN @s_qscod.
+IF lt_code IS NOT INITIAL.
+SELECT konts FROM t030 INTO TABLE @DATA(lt_gl) FOR ALL ENTRIES IN @lt_code WHERE komok EQ @lt_code-komok
+AND   ktosl EQ 'WIT'.
+IF lt_gl IS NOT INITIAL.
+LOOP AT lt_gl INTO DATA(ls_gl).
+          s_gl-sign   = 'I'.
+          s_gl-option = 'EQ'.
+          s_gl-low    = ls_gl-konts.
+APPEND s_gl.
+CLEAR s_gl.
+ENDLOOP.
+ENDIF.
+ENDIF.
+ENDIF.
+SORT : s_gl[] .
+SUBMIT rfitemgl WITH sd_saknr IN s_gl
+WITH sd_bukrs EQ p_bukrs
+WITH x_aisel  EQ abap_true
+WITH so_budat IN s_budat AND RETURN.
+FREE lr_pay_data.
+TRY.
+      cl_salv_bs_runtime_info=>get_data_ref(        IMPORTING r_data = lr_pay_data ).
+ASSIGN lr_pay_data->* TO <lt_pay_data>.
+IF sy-subrc EQ 0.
+MOVE-CORRESPONDING <lt_pay_data> TO p_fbl3n_data.
+ENDIF.
+CATCH cx_salv_bs_sc_runtime_info.
+MESSAGE 'Unable to retrieve ALV data'(025) TYPE 'I'.
+ENDTRY.
+  cl_salv_bs_runtime_info=>clear_all( ).
+DELETE p_fbl3n_data WHERE gjahr NE p_year.
+ENDFORM.
