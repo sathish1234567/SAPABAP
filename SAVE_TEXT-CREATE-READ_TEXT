@@ -1,0 +1,150 @@
+  METHOD /IWWRK/IF_WF_WI_BEFORE_UPD_IB~BEFORE_UPDATE.
+
+    DATA LS_OBJECT          TYPE SWR_OBJ_2.
+    DATA FORMNUMBER         TYPE SWXFORMABS-FORMNUMBER.
+    DATA PO_NO              TYPE TDOBNAME.
+    DATA LV_RETCODE         TYPE SY-SUBRC.
+    DATA LT_CONTAINER       TYPE TABLE OF SWR_CONT.
+    DATA LS_CONTIANER       TYPE SWR_CONT.
+    DATA LV_RELEASE_CODE    TYPE FRGCO.
+    DATA LV_AGENT           TYPE SWW_AAGENT.
+    DATA LT_TEXT            TYPE TABLE OF TLINE.
+    DATA LW_TEXT            TYPE TLINE.
+    DATA LV_DEC             TYPE C LENGTH 8.
+    DATA LV_STR             TYPE STRING.                    "TEXT2048
+    DATA GT_TEXT            TYPE TABLE OF SOTR_TXT.
+    DATA LW_HEAD            TYPE THEAD.
+
+
+** Badi Implemeted to update Approve / reject comment made from Fiori MY INBOX app to PO header text .
+** Read container to Determine PO number and Release code .
+
+    "Access the workflow data
+    CALL FUNCTION 'SAP_WAPI_GET_OBJECTS'
+      EXPORTING
+        WORKITEM_ID      = IS_WI_DETAILS-WI_ID
+      IMPORTING
+        LEADING_OBJECT_2 = LS_OBJECT.
+
+    "Get the formnumber which is the key to the absence table
+    MOVE LS_OBJECT-INSTID TO FORMNUMBER.
+    MOVE FORMNUMBER TO PO_NO.
+
+    "Read the workflow's container data
+    CALL FUNCTION 'SAP_WAPI_READ_CONTAINER'
+      EXPORTING
+        WORKITEM_ID      = IS_WI_DETAILS-WI_ID
+      IMPORTING
+        RETURN_CODE      = LV_RETCODE
+      TABLES
+        SIMPLE_CONTAINER = LT_CONTAINER.
+    " Check which decision was selected and set the data
+    " values appropriately
+    READ TABLE LT_CONTAINER INTO LS_CONTIANER WITH KEY ELEMENT = 'RELEASECODE'.
+    IF SY-SUBRC EQ 0.
+      LV_RELEASE_CODE = LS_CONTIANER-VALUE.
+    ENDIF.
+    CLEAR LS_CONTIANER.
+
+    READ TABLE LT_CONTAINER INTO LS_CONTIANER WITH KEY ELEMENT = '_WI_ACTUAL_AGENT'.
+    IF SY-SUBRC EQ 0.
+      LV_AGENT = LS_CONTIANER-VALUE .
+      REPLACE ALL OCCURRENCES OF 'US' IN LV_AGENT WITH ''.
+      CONDENSE LV_AGENT.
+    ENDIF.
+
+    CASE IV_DECISION_KEY.
+      WHEN 0001. "Approved
+        LV_DEC = 'APPROVED'.
+      WHEN 0002. "Rejected
+        LV_DEC = 'REJECTED'.
+    ENDCASE.
+
+    " Read all the comment and split into 132 Char line.
+    LOOP AT IT_WF_CONTAINER_TAB ASSIGNING FIELD-SYMBOL(<FS_CONTB>) WHERE ELEMENT EQ 'ACTION_COMMENTS'.
+      CONCATENATE LV_STR <FS_CONTB>-VALUE INTO LV_STR SEPARATED BY SPACE.
+      CONDENSE LV_STR.
+    ENDLOOP.
+
+    CALL FUNCTION 'SOTR_SERV_STRING_TO_TABLE'
+      EXPORTING
+        TEXT        = LV_STR
+        LINE_LENGTH = 131
+        LANGU       = SY-LANGU
+      TABLES
+        TEXT_TAB    = GT_TEXT.
+
+    " Check if Text F18 / EKKO is already created if not, Create new text or modify text with latest user comment.
+    CALL FUNCTION 'READ_TEXT'
+      EXPORTING
+        ID       = 'F18'
+        LANGUAGE = SY-LANGU
+        NAME     = PO_NO
+        OBJECT   = 'EKKO'
+      TABLES
+        LINES    = LT_TEXT
+      EXCEPTIONS
+        OTHERS   = 1.
+
+    IF LT_TEXT[] IS NOT INITIAL.  " Append new comment to existing text
+
+      LW_TEXT = ' '.
+      APPEND LW_TEXT TO LT_TEXT.
+      CLEAR : LW_TEXT.
+
+      CONCATENATE LV_RELEASE_CODE ':' LV_AGENT  ':' LV_DEC '-' 'ON' SY-DATUM INTO LW_TEXT-TDLINE SEPARATED BY SPACE.
+      APPEND LW_TEXT TO LT_TEXT.
+      CLEAR : LW_TEXT.
+
+      LOOP AT GT_TEXT ASSIGNING FIELD-SYMBOL(<FS_TXT>).
+        MOVE <FS_TXT> TO LW_TEXT-TDLINE .
+        APPEND LW_TEXT TO LT_TEXT.
+        CLEAR : LW_TEXT.
+      ENDLOOP.
+
+      IF LT_TEXT[] IS NOT INITIAL.
+
+        LW_HEAD-TDOBJECT = 'EKKO'.
+        LW_HEAD-TDNAME = PO_NO.
+        LW_HEAD-TDID = 'F18'.
+        LW_HEAD-TDSPRAS = SY-LANGU.
+
+        CALL FUNCTION 'SAVE_TEXT'
+          EXPORTING
+            HEADER          = LW_HEAD
+            SAVEMODE_DIRECT = 'X'
+          TABLES
+            LINES           = LT_TEXT.
+      ENDIF.
+
+
+    ELSE.                           " Create New Text for same PO number.
+
+      CONCATENATE LV_RELEASE_CODE ':' LV_AGENT  ':' LV_DEC '-' 'ON' SY-DATUM INTO LW_TEXT-TDLINE SEPARATED BY SPACE.
+      APPEND LW_TEXT TO LT_TEXT.
+      CLEAR : LW_TEXT.
+
+      LOOP AT GT_TEXT ASSIGNING FIELD-SYMBOL(<FS_TXT1>).
+        MOVE <FS_TXT1> TO LW_TEXT-TDLINE .
+        APPEND LW_TEXT TO LT_TEXT.
+        CLEAR : LW_TEXT.
+      ENDLOOP.
+
+      IF LT_TEXT[] IS NOT INITIAL.
+
+        CALL FUNCTION 'CREATE_TEXT'
+          EXPORTING
+            FID       = 'F18'
+            FLANGUAGE = SY-LANGU
+            FNAME     = PO_NO
+            FOBJECT   = 'EKKO'
+          TABLES
+            FLINES    = LT_TEXT.
+
+      ENDIF.
+
+    ENDIF.
+
+
+
+  ENDMETHOD.
