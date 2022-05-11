@@ -1,0 +1,252 @@
+DATA : lw_dokar TYPE dokar,
+       lw_doknr TYPE doknr,
+       lw_doktl TYPE doktl_d,
+       lw_dokvr TYPE dokvr.
+DATA:
+name TYPE vrm_id,
+list TYPE vrm_values,
+ value TYPE vrm_value.
+
+DATA : g_html_container TYPE REF TO cl_gui_custom_container,
+       g_html_control   TYPE REF TO cl_gui_html_viewer.
+
+DATA: lt_upldtable TYPE sbdst_content.
+DATA: lw_upldtable TYPE bapiconten.
+
+DATA:gt_file TYPE cnvom_t_string.
+
+DATA ls_drad TYPE drad.
+PARAMETERS p1 TYPE char3 AS LISTBOX VISIBLE LENGTH 10.
+PARAMETERS : p_doknr TYPE doknr,
+             p_dokar TYPE dokar.
+
+
+
+AT SELECTION-SCREEN OUTPUT.
+  name = 'P1'. " Name should be in UPPER CASE
+
+  value-key = '1'.
+  value-text = 'DMS'.
+  APPEND value TO list.
+
+  value-key = '2'.
+  value-text = 'FRT'.
+  APPEND value TO list.
+
+  CALL FUNCTION 'VRM_SET_VALUES'
+    EXPORTING
+      id              = name
+      values          = list
+    EXCEPTIONS
+      id_illegal_name = 0
+      OTHERS          = 0.
+  IF sy-subrc NE 0.
+    MESSAGE ID sy-msgid TYPE sy-msgty
+            NUMBER sy-msgno WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+  ENDIF.
+
+START-OF-SELECTION.
+  SELECT * FROM drad
+           INTO ls_drad
+           UP TO 1 ROWS
+           WHERE doknr = p_doknr AND
+                 dokar = p_dokar.
+  ENDSELECT.
+  IF sy-subrc EQ 0.
+    lw_dokar = ls_drad-dokar.
+    lw_doknr = ls_drad-doknr.
+    lw_doktl = ls_drad-doktl.
+    lw_dokvr = ls_drad-dokvr.
+  ELSE.
+    MESSAGE 'No data found' TYPE 'I'.
+    LEAVE LIST-PROCESSING.
+  ENDIF.
+
+  IF p1 = '1'.
+    CALL FUNCTION 'DOCUMENT_SHOW_DIRECT'
+      EXPORTING
+        dokar   = lw_dokar
+        doknr   = lw_doknr
+        dokteil = lw_doktl
+        dokvr   = lw_dokvr.
+  ELSEIF p1 = 2.
+    PERFORM show_in_html USING  lw_doknr
+                                lw_dokar
+                                lw_doktl
+                                lw_dokvr.
+
+  ENDIF.
+
+
+
+FORM show_in_html USING lv_doknr
+                        lv_dokar
+                        lv_doktl
+                        lv_dokvr.
+
+  DATA :  ls_draw       TYPE draw,
+        lv_filep      TYPE filep,
+        lv_dappl      TYPE dappl,
+        ls_file_check TYPE cvapi_doc_file,
+        ls_file       TYPE cvapi_doc_file,
+        ls_message    TYPE messages,
+        ls_xdata      TYPE x LENGTH 2550,
+        ls_content    TYPE drao,
+        lv_mime       TYPE tdwp-mimetype,
+        lv_size       TYPE i,
+        ls_return     TYPE bapiret2.
+
+  DATA : lt_xdata      TYPE TABLE OF orblk,
+         lt_file_check TYPE STANDARD TABLE OF cvapi_doc_file,
+         lt_content    TYPE STANDARD TABLE OF drao,
+         lt_file       TYPE STANDARD TABLE OF cvapi_doc_file.
+  DATA iv_dmsno TYPE doknr.
+  DATA ev_filecontent TYPE xstring.
+  FIELD-SYMBOLS : <fs_file> TYPE cvapi_doc_file.
+  CLEAR ls_draw.
+  ls_draw-dokar  = lv_dokar .
+  ls_draw-dokvr  = lv_dokvr.
+  ls_draw-doktl  = lv_doktl.
+  CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+    EXPORTING
+      input  = iv_dmsno
+    IMPORTING
+      output = iv_dmsno.
+
+  CALL FUNCTION 'CVAPI_DOC_GETDETAIL'
+    EXPORTING
+*     PF_BATCHMODE    = ' '
+*     PF_HOSTNAME     = ' '
+      pf_dokar        = ls_draw-dokar
+      pf_doknr        = iv_dmsno
+      pf_dokvr        = ls_draw-dokvr
+      pf_doktl        = ls_draw-doktl
+*     PF_READ_DRAD    = ' '
+*     PF_READ_DRAP    = ' '
+*     PF_ACTIVE_FILES = ' '
+*     PF_READ_COMP    = ' '
+*     PF_READ_KPRO    = 'X'
+*     PF_READ_DRAT    = 'X'
+    IMPORTING
+      psx_draw        = ls_draw
+*     PFX_DESCRIPTION =
+    TABLES
+      pt_files        = lt_file
+*     PT_COMP         =
+*     PT_DRAP         =
+*     PT_DRAD         =
+*     PT_DRAT         =
+    EXCEPTIONS
+      not_found       = 1
+      no_auth         = 2
+      error           = 3
+      OTHERS          = 4.
+  IF sy-subrc = 0.
+*    DELETE lt_file WHERE filename NS iv_filename.
+    READ TABLE lt_file INTO ls_file INDEX 1.
+    IF sy-subrc = 0 .
+      lv_filep = ls_file-filename.
+      lv_dappl = ls_file-dappl.
+      CALL FUNCTION 'CV120_GET_MIME_TYPE'
+        EXPORTING
+          pf_dappl     = lv_dappl
+          pf_file      = lv_filep
+        IMPORTING
+          pfx_mimetype = lv_mime.
+      IF NOT lv_mime IS INITIAL.
+*        ev_mimetype = lv_mime.
+      ENDIF.
+    ENDIF.
+    CALL FUNCTION 'CVAPI_DOC_CHECKOUTVIEW'
+      EXPORTING
+        pf_dokar           = ls_draw-dokar
+        pf_doknr           = iv_dmsno
+        pf_dokvr           = ls_draw-dokvr
+        pf_doktl           = ls_draw-doktl
+*       PF_FTP_DEST        = ' '
+*       PF_HTTP_DEST       = ' '
+*       PF_HOSTNAME        = ' '
+        pf_content_provide = 'TBL'
+*       PS_API_CONTROL     =
+*       PF_STD_URL         = 'X'
+      IMPORTING
+        psx_message        = ls_message
+        psx_draw           = ls_draw
+      TABLES
+        pt_files           = lt_file
+*       PTX_COMPONENTS     =
+        ptx_content        = lt_content.
+  ELSE.
+*    error handling
+*    CLEAR ls_return.
+*    ls_return-type = 'E'.
+*    ls_return-message = 'No file content found'(013).
+*    APPEND ls_return TO et_return.
+    EXIT.
+  ENDIF.
+  CLEAR lv_size.
+  LOOP AT lt_content INTO ls_content.
+    ls_xdata = ls_content-orblk.
+    APPEND ls_xdata TO lt_xdata.
+    CLEAR ls_xdata.
+    lv_size = ls_content-orln.
+  ENDLOOP.
+  IF lt_xdata[] IS NOT INITIAL.
+    CALL FUNCTION 'SCMS_BINARY_TO_XSTRING'
+      EXPORTING
+        input_length = lv_size
+*       FIRST_LINE   = 0
+*       LAST_LINE    = 0
+      IMPORTING
+        buffer       = ev_filecontent
+      TABLES
+        binary_tab   = lt_xdata.
+  ENDIF.
+*  IF ev_filecontent IS INITIAL.
+*    CLEAR ls_return.
+*    ls_return-type = 'E'.
+*    ls_return-message = 'No file content found'(013).
+*    APPEND ls_return TO et_return.
+*    EXIT.
+*  ENDIF.
+
+
+
+
+
+****************************************
+
+  DATA: lv_url TYPE char255.
+  SET PF-STATUS '9002'.
+  SET TITLEBAR '9002'.
+
+  CREATE OBJECT g_html_container
+    EXPORTING
+      container_name = 'PDF'.
+
+  CREATE OBJECT g_html_control
+    EXPORTING
+      parent = g_html_container.
+
+
+
+* Load the HTML
+  CALL METHOD g_html_control->load_data(
+    EXPORTING
+      type                 = 'application'
+      subtype              = 'pdf'
+    IMPORTING
+      assigned_url         = lv_url
+    CHANGING
+      data_table           = lt_upldtable
+    EXCEPTIONS
+      dp_invalid_parameter = 1
+      dp_error_general     = 2
+      cntl_error           = 3
+      OTHERS               = 4 ).
+
+* Show it
+  CALL METHOD g_html_control->show_url(
+    url = lv_url
+    in_place = 'X' ).
+ENDFORM.                    " SHOW_IN_HTML
