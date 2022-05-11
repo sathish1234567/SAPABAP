@@ -1,0 +1,155 @@
+*&---------------------------------------------------------------------*
+*& Report  YSAT_PDF
+*&
+*&---------------------------------------------------------------------*
+*&
+*&
+*&---------------------------------------------------------------------*
+
+REPORT ysat_pdf.
+
+DATA: g_html_container TYPE REF TO cl_gui_custom_container,
+g_html_control   TYPE REF TO cl_gui_html_viewer,
+lv_url           TYPE char255,
+lt_data          TYPE STANDARD TABLE OF x255,
+lv_xstring TYPE xstring.
+
+START-OF-SELECTION.
+  CALL SCREEN 100.
+*&———————————————————————*
+*&      Module  STATUS_0100  OUTPUT
+*&———————————————————————*
+MODULE status_0100 OUTPUT.
+
+  SELECT SINGLE document
+        FROM  zobizsblc_hdr
+        INTO lv_xstring
+        WHERE bukrs = '6000'
+        AND   uniqueid = 'S1105202202'.
+
+
+  CREATE OBJECT g_html_container
+    EXPORTING
+      container_name = 'PDF'.
+
+  CREATE OBJECT g_html_control
+    EXPORTING
+      parent = g_html_container.
+
+  CALL FUNCTION 'SCMS_XSTRING_TO_BINARY'
+    EXPORTING
+      buffer     = lv_xstring
+    TABLES
+      binary_tab = lt_data.
+
+  CALL METHOD g_html_control->load_data
+    EXPORTING
+      type                   = 'APPLICATION'
+      subtype                = 'PDF'
+    IMPORTING
+      assigned_url           = lv_url
+    CHANGING
+      data_table             = lt_data
+    EXCEPTIONS
+      dp_invalid_parameter   = 1
+      dp_error_general       = 2
+      cntl_error             = 3
+      html_syntax_notcorrect = 4
+      OTHERS                 = 5.
+
+  CALL METHOD g_html_control->show_url
+    EXPORTING
+      url                    = lv_url
+      in_place               = 'X'
+    EXCEPTIONS
+      cntl_error             = 1
+      cnht_error_not_allowed = 2
+      cnht_error_parameter   = 3
+      dp_error_general       = 4
+      OTHERS                 = 5.
+
+ENDMODULE.                    "status_0100 OUTPUT
+*&———————————————————————*
+*&      Module  USER_COMMAND_0100  INPUT
+*&———————————————————————*
+MODULE user_command_0100 INPUT.
+
+  CALL METHOD g_html_control->free
+    EXCEPTIONS
+      cntl_error        = 1
+      cntl_system_error = 2
+      OTHERS            = 3.
+
+ENDMODULE.                    "user_command_0100 INPUT
+
+*PARAMETERS:
+*  p_fname TYPE zfar_store_file-filename LOWER CASE,
+*  p_path TYPE string LOWER CASE.
+*
+*
+*DATA:
+*      gs_store_file TYPE zfar_store_file,
+*      xstr_content TYPE xstring,
+*      gt_content TYPE STANDARD TABLE OF tdline,
+*      len TYPE i,
+*      str_fname TYPE string.
+*
+*START-OF-SELECTION.
+*
+*  SELECT SINGLE * FROM test
+*    INTO gs_store_file
+*    WHERE filename = p_fname.
+*
+*  xstr_content  = gs_store_file-file_content.
+*
+*  "Convert xstring/rawstring to binary itab
+*  CALL FUNCTION 'SCMS_XSTRING_TO_BINARY'
+*    EXPORTING
+*      buffer        = xstr_content
+*    IMPORTING
+*      output_length = len
+*    TABLES
+*      binary_tab    = gt_content.
+*  .
+*
+*  IF sy-subrc <> 0.
+*    MESSAGE 'Unable to convert xstring to binary'
+*      TYPE 'E'.
+*  ENDIF.
+*
+*  str_fname = p_fname.
+*
+*  CALL FUNCTION 'GUI_DOWNLOAD'
+*    EXPORTING
+*      bin_filesize            = len
+*      filename                = p_path
+*      filetype                = 'BIN'
+*    TABLES
+*      data_tab                = gt_content
+*    EXCEPTIONS
+*      file_write_error        = 1
+*      no_batch                = 2
+*      gui_refuse_filetransfer = 3
+*      invalid_type            = 4
+*      no_authority            = 5
+*      unknown_error           = 6
+*      header_not_allowed      = 7
+*      separator_not_allowed   = 8
+*      filesize_not_allowed    = 9
+*      header_too_long         = 10
+*      dp_error_create         = 11
+*      dp_error_send           = 12
+*      dp_error_write          = 13
+*      unknown_dp_error        = 14
+*      access_denied           = 15
+*      dp_out_of_memory        = 16
+*      disk_full               = 17
+*      dp_timeout              = 18
+*      file_not_found          = 19
+*      dataprovider_exception  = 20
+*      control_flush_error     = 21
+*      OTHERS                  = 22.
+*  IF sy-subrc <> 0.
+*    MESSAGE 'Unable to download file from SAP'
+*      TYPE 'E'.
+*  ENDIF.
