@@ -1,0 +1,173 @@
+How to generate fieldcatalog from program internal table
+Skip to end of metadata
+Created by Former Member, last modified on Jul 11, 2008Go to start of metadata
+SPAN
+
+Unknown macro: { font-family}
+.L1S31
+
+Unknown macro: { font-style}
+.L1S32
+
+Unknown macro: { color}
+.L1S33
+
+Unknown macro: { color}
+.L1S52
+
+Unknown macro: { color}
+This is a sample to create dynamiquely a fieldcatalog in a report 
+
+*&---------------------------------------------------------------------*
+*&      Form  f999_create_fieldcatalog
+*&---------------------------------------------------------------------*
+* Init field catalog from internal table structure
+*----------------------------------------------------------------------*
+ FORM  f999_create_fieldcatalog
+       TABLES lt_fieldcat  TYPE lvc_t_fcat
+       USING  l_tabname    TYPE fieldname.
+
+   DATA: lt_struct TYPE rstrucinfo OCCURS 0 WITH HEADER LINE,
+         lt_dd04t  TYPE dd04t OCCURS 0 WITH HEADER LINE,
+         l_fieldcat TYPE lvc_s_fcat.
+
+* Search structure information
+   CALL FUNCTION 'GET_COMPONENT_LIST'
+     EXPORTING
+       program    = sy-repid
+       fieldname  = l_tabname
+     TABLES
+       components = lt_struct.
+   CHECK NOT lt_struct[] IS INITIAL.
+
+* Get ddic informations
+   SELECT * FROM dd04t
+          INTO TABLE lt_dd04t
+          FOR ALL ENTRIES IN lt_struct
+          WHERE rollname   = lt_struct-compname
+            AND ddlanguage = sy-langu
+            AND as4local   = 'A'
+            AND as4vers    = 0.
+
+* Populate fieldcat information
+   LOOP AT lt_struct.
+
+* Read dd04t information
+     CLEAR lt_dd04t.
+     READ TABLE lt_dd04t
+          WITH KEY rollname = lt_struct-compname.
+     IF sy-subrc <> 0.
+       SELECT SINGLE * FROM dd04t
+              INTO lt_dd04t
+              WHERE rollname   = lt_struct-compname
+                AND ddlanguage = 'EN'
+                AND as4local   = 'A'
+                AND as4vers    = 0.
+       IF l_fieldcat-scrtext_l IS INITIAL.
+         lt_dd04t-scrtext_l = lt_struct-compname.
+         lt_dd04t-scrtext_m = lt_struct-compname.
+         lt_dd04t-scrtext_s = lt_struct-compname.
+       ENDIF.
+
+     ENDIF.
+
+* fill informations
+     MOVE-CORRESPONDING lt_struct TO l_fieldcat.
+     MOVE-CORRESPONDING lt_dd04t TO l_fieldcat.
+     l_fieldcat-fieldname = lt_struct-compname.
+     l_fieldcat-tabname   = l_tabname.
+     APPEND l_fieldcat TO lt_fieldcat.
+   ENDLOOP.
+
+ ENDFORM. "  f999_create_fieldcatalog
+
+No labels
+2 Comments
+User icon: 99kfde54
+Leon Hoeneveld
+A shorter code, also suitable for structures is:
+
+  *&---------------------------------------------------------------------*
+*&      Form  create_fieldcatalog
+*&---------------------------------------------------------------------*
+* Init field catalog from internal table structure
+*----------------------------------------------------------------------*
+FORM  create_fieldcatalog
+      TABLES lt_fieldcat  TYPE lvc_t_fcat
+      USING  l_tabname    TYPE fieldname.
+
+  DATA: l_fieldcat TYPE lvc_s_fcat.
+  DATA: l_message TYPE string.
+
+  DATA: lt_fields TYPE ddfields.
+  DATA: ls_fields TYPE dfies.
+  DATA: lo_descr TYPE REF TO cl_abap_typedescr.
+  DATA: lo_structdescr TYPE REF TO cl_abap_structdescr.
+
+  TRY.
+      cl_abap_structdescr=>describe_by_name(
+          EXPORTING
+            p_name         = l_tabname
+          RECEIVING
+            p_descr_ref    = lo_descr ).
+
+      lo_structdescr ?= lo_descr.
+
+      lt_fields = lo_structdescr->get_ddic_field_list( ).
+
+    CATCH cx_root INTO go_error.
+      l_message = go_error->get_text( ).
+      MESSAGE l_message TYPE 'E' DISPLAY LIKE 'I'.
+
+  ENDTRY.
+
+  LOOP AT lt_fields INTO ls_fields.
+    MOVE-CORRESPONDING ls_fields TO l_fieldcat.
+    APPEND l_fieldcat TO lt_fieldcat.
+  ENDLOOP.
+
+ENDFORM. "  create_fieldcatalog
+
+You can then set additional parameters f.i. the "edit" value.
+
+
+Dec 06, 2010
+User icon: cu6c44f
+Former Member
+Hi
+
+Try this instead:
+
+ 
+*&---------------------------------------------------------------------*
+*& Form  create_fieldcatalog
+*&---------------------------------------------------------------------*
+* Create a field catalogue from any internal table
+*----------------------------------------------------------------------*
+*      -->PT_TABLE     Internal table
+*      -->PT_FIELDCAT  Field Catalogue
+*----------------------------------------------------------------------*
+FORM  create_fieldcatalog
+       USING     pt_table     TYPE ANY TABLE
+       CHANGING  pt_fieldcat  TYPE lvc_t_fcat.
+  DATA:
+    lr_tabdescr TYPE REF TO cl_abap_structdescr
+  , lr_data     TYPE REF TO data
+  , lt_dfies    TYPE ddfields
+  , ls_dfies    TYPE dfies
+  , ls_fieldcat TYPE lvc_s_fcat
+  .
+  CLEAR pt_fieldcat.
+  CREATE DATA lr_data LIKE LINE OF pt_table.
+  lr_tabdescr ?= cl_abap_structdescr=>describe_by_data_ref( lr_data ).
+  lt_dfies = cl_salv_data_descr=>read_structdescr( lr_tabdescr ).
+  LOOP AT lt_dfies
+  INTO    ls_dfies.
+    CLEAR ls_fieldcat.
+    MOVE-CORRESPONDING ls_dfies TO ls_fieldcat.
+    APPEND ls_fieldcat TO pt_fieldcat.
+  ENDLOOP.
+ENDFORM.                    "create_fieldcatalog
+
+ 
+
