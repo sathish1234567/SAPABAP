@@ -1,0 +1,299 @@
+*---------------------------------------------------------------------*
+*       FORM ENTRY
+*---------------------------------------------------------------------*
+FORM entry USING return_code us_screen.
+
+  DATA: lf_retcode TYPE sy-subrc,
+        lv_vbeln   TYPE vbeln.
+  lv_vbeln = nast-objky.
+  SELECT SINGLE bukrs FROM vbrk INTO gv_bukrs WHERE vbeln = lv_vbeln.
+  CLEAR retcode.
+  xscreen = us_screen.
+  PERFORM processing USING us_screen
+                     CHANGING lf_retcode.
+  IF lf_retcode NE 0.
+    return_code = 1.
+  ELSE.
+    return_code = 0.
+  ENDIF.
+
+ENDFORM.                    "ENTRY
+*---------------------------------------------------------------------*
+*       FORM PROCESSING                                               *
+*---------------------------------------------------------------------*
+FORM processing USING proc_screen
+                CHANGING cf_retcode.
+  DATA:text_1 TYPE char20.
+  DATA:l_t TYPE c.
+  DATA:is_otf TYPE tsfotf.
+  DATA:ls_otf TYPE itcoo.
+  DATA:v_line TYPE i.
+  DATA: ls_print_data_to_read TYPE lbbil_print_data_to_read.
+  DATA: ls_bil_invoice TYPE lbbil_invoice.
+  DATA:it_vbrp TYPE TABLE OF vbrp.
+  DATA:wa_vbrp TYPE vbrp.
+  DATA: lf_fm_name            TYPE rs38l_fnam.
+  DATA: ls_control_param      TYPE ssfctrlop.
+  DATA: ls_composer_param     TYPE ssfcompop.
+  DATA: ls_recipient          TYPE swotobjid.
+  DATA: ls_sender             TYPE swotobjid.
+  DATA: lf_formname           TYPE tdsfname.
+  DATA: ls_addr_key           LIKE addr_key.
+  DATA: ls_dlv-land           LIKE vbrk-land1.
+  DATA: ls_job_info           TYPE ssfcrescl.
+
+* SmartForm from customizing table TNAPR
+  lf_formname = tnapr-sform.
+* determine print data
+*  BREAK-POINT.
+  PERFORM set_print_data_to_read USING    lf_formname
+                                 CHANGING ls_print_data_to_read
+                                 cf_retcode.
+
+  IF cf_retcode = 0.
+* select print data
+    PERFORM get_data USING    ls_print_data_to_read
+                     CHANGING ls_addr_key
+                              ls_dlv-land
+                              ls_bil_invoice
+                              cf_retcode.
+  ENDIF.
+
+  IF cf_retcode = 0.
+    PERFORM set_print_param USING    ls_addr_key
+                                     ls_dlv-land
+                            CHANGING ls_control_param
+                                     ls_composer_param
+                                     ls_recipient
+                                     ls_sender
+                                     cf_retcode.
+  ENDIF.
+
+
+  SELECT * FROM vbrp INTO TABLE it_vbrp WHERE vbeln = ls_bil_invoice-hd_gen-bil_number.
+
+  IF sy-subrc = 0.
+    LOOP AT it_vbrp INTO wa_vbrp WHERE  vbeln = ls_bil_invoice-hd_gen-bil_number. .
+      ls_bil_invoice-hd_gen-bil_number = wa_vbrp-vbeln.
+    ENDLOOP.
+  ENDIF.
+  IF cf_retcode = 0.
+*      BREAK-POINT.
+* determine smartform function module for invoice
+    CALL FUNCTION 'SSF_FUNCTION_MODULE_NAME'
+      EXPORTING
+        formname           = lf_formname
+*       variant            = ' '
+*       direct_call        = ' '
+      IMPORTING
+        fm_name            = lf_fm_name
+      EXCEPTIONS
+        no_form            = 1
+        no_function_module = 2
+        OTHERS             = 3.
+    IF sy-subrc <> 0.
+*   error handling
+      cf_retcode = sy-subrc.
+      PERFORM protocol_update.
+    ENDIF.
+  ENDIF.
+
+
+
+  IF cf_retcode = 0.
+    PERFORM check_repeat.
+    IF ls_composer_param-tdcopies EQ 0.
+      nast_anzal = 1.
+    ELSE.
+      nast_anzal = ls_composer_param-tdcopies.
+    ENDIF.
+    ls_composer_param-tdcopies = 1.
+    DO nast_anzal TIMES.
+* In case of repetition only one time archiving
+      IF sy-index > 1 AND nast-tdarmod = 3.
+        nast_tdarmod = nast-tdarmod.
+        nast-tdarmod = 1.
+        ls_composer_param-tdarmod = 1.
+      ENDIF.
+      IF sy-index NE 1 AND repeat IS INITIAL.
+        repeat = 'X'.
+      ENDIF.
+
+* In voice  prints only after J1IN completed.
+      DATA : v_docno LIKE j_1iexchdr-docno.
+      DATA : v_werks LIKE vbrk-bupla.
+*      skiping the error message for foll billing types and plants 1203 ,1201, 1204 dinesh 22/08/08
+      SELECT SINGLE bupla FROM  vbrk INTO v_werks WHERE
+      vbeln = ls_bil_invoice-hd_gen-bil_number.
+*
+
+      DATA: w_flag TYPE c.              "+JV30122013
+      CLEAR: w_flag.                    "+JV30122013
+
+*      IF ls_bil_invoice-hd_gen-bil_type = 'ZAST'
+*       OR ls_bil_invoice-hd_gen-bil_type = 'ZRE1'
+*       OR ls_bil_invoice-hd_gen-bil_type = 'ZSIE'
+*       OR ls_bil_invoice-hd_gen-bil_type = 'ZSIP'
+*       OR ls_bil_invoice-hd_gen-bil_type = 'ZSNR'
+*       OR ls_bil_invoice-hd_gen-bil_type = 'ZEC'
+*       OR ls_bil_invoice-hd_gen-bil_type = 'ZEN'
+*       OR ls_bil_invoice-hd_gen-bil_type = 'ZEG'
+*       OR ls_bil_invoice-hd_gen-bil_type = 'ZG2'      " Added by sudheer on 7/3/13
+*       OR v_werks = '1203'
+*       OR v_werks = '1201'
+*       OR v_werks = '1204'
+*       OR v_werks = '1800'.
+*
+*      ELSE.
+*
+*        SELECT SINGLE docno INTO v_docno
+*                                 FROM j_1iexchdr
+*                                 WHERE rdoc = ls_bil_invoice-hd_gen-bil_number
+*                                   AND status = 'C'.
+*        IF sy-subrc <> 0.
+*          MESSAGE e001(zsd1) WITH 'J1IIN has not completed'.
+**** Begin of addition by JV30122013 ***
+*        ELSE.
+**          w_flag = 'X'.
+**** End of addition by JV30122013 ***
+*        ENDIF.
+*      ENDIF.
+      DATA: ls_nast TYPE nast.
+*Checking the Print out is taken earlier or not
+
+      SELECT SINGLE * FROM nast INTO ls_nast
+              WHERE kappl = nast-kappl
+                AND objky = nast-objky
+                AND kschl = nast-kschl
+                AND spras = nast-spras
+                AND parnr = nast-parnr
+                AND parvw = nast-parvw
+                AND vstat = 1
+                AND objtype = nast-objtype.
+
+      IF sy-subrc EQ 0.
+        ls_control_param-no_dialog = space.   "Addition by sudheer kumar on 28/03/2013
+        v_line = 1.
+        text_1 = 'Extra Copy'.
+        l_t = 'X'.
+      ELSE.
+        ls_control_param-no_dialog = 'X'.   "Addition by sudheer kumar on 28/03/2013
+        ls_composer_param-tdcopies = 1.
+        v_line = 1.
+      ENDIF.
+      DO v_line TIMES.
+*  BREAK-POINT.
+        IF text_1 IS INITIAL.
+          IF sy-index = 1.
+            text_1 = 'Customs Copy'.
+          ENDIF.
+        ENDIF.
+        IF sy-index = 2.
+          text_1 = 'Accounts Copy'.
+        ENDIF.
+        IF sy-index = 3.
+          text_1 = 'Extra Copy'.
+        ENDIF.
+        IF sy-index = 4.
+          text_1 = 'Extra Copy'.
+        ENDIF.
+
+*ls_control_param-no_dialog = 'X'.
+        ls_control_param-getotf = 'X'.
+* call smartform invoice
+
+        CALL FUNCTION lf_fm_name
+          EXPORTING
+*           archive_index      = toa_dara
+*           archive_parameters = arc_params
+            control_parameters = ls_control_param
+*           mail_appl_obj      =
+*           mail_recipient     = ls_recipient
+*           mail_sender        = ls_sender
+*           output_options     = ls_composer_param
+*           user_settings      = space
+            is_bil_invoice     = ls_bil_invoice
+           is_nast            = nast
+*           is_repeat          = repeat
+            w_flag             = ' ' "w_flag                       "+JV30122013
+*           text_1             = text_1
+*           l_t                = l_t
+            p_r1               = 'X'
+            p_r2               = ' '
+            gv_bukrs           = gv_bukrs
+          IMPORTING
+            job_output_info    = ls_job_info
+*           document_output_info =
+*           job_output_options =
+          TABLES
+            it_vbrp1           = it_vbrp
+          EXCEPTIONS
+            formatting_error   = 1
+            internal_error     = 2
+            send_error         = 3
+            user_canceled      = 4
+            OTHERS             = 5.
+        IF sy-subrc <> 0.
+*   error handling
+          cf_retcode = sy-subrc.
+          PERFORM protocol_update.
+* get SmartForm protocoll and store it in the NAST protocoll
+          PERFORM add_smfrm_prot.
+        ENDIF.
+*      BREAK-POINT.
+*
+        LOOP AT ls_job_info-otfdata INTO ls_otf.
+          APPEND ls_otf TO is_otf.
+        ENDLOOP.
+*      CALL FUNCTION 'SSFDISPLAY_OTF'
+**       EXPORTING
+**         DISPLAY_PARAMETERS       =
+**         ARCHIVE_PARAMS           =
+**         SPOOLATTR                =
+**         SHOW_DIALOG              = ' '
+**       IMPORTING
+**         RESULT                   =
+*        TABLES
+*          otf                      = IS_OTF
+**       EXCEPTIONS
+**         ERROR                    = 1
+**         OTHERS                   = 2
+*                .
+*      IF sy-subrc <> 0.
+** Implement suitable error handling here
+*      ENDIF.
+*
+
+      ENDDO.
+      CALL FUNCTION 'SSFCOMP_PDF_PREVIEW'
+        EXPORTING
+          i_otf                    = is_otf
+        EXCEPTIONS
+          convert_otf_to_pdf_error = 1
+          cntl_error               = 2
+          OTHERS                   = 3.
+      IF sy-subrc <> 0.
+*MESSAGE ID sy-msgid TYPE sy-msgty NUMBER symsgno
+*WITH sy-msgv1 sy-msgv2 sy-msgv3 symsgv4.
+      ENDIF.
+    ENDDO.
+* get SmartForm spoolid and store it in the NAST protocoll
+    DATA ls_spoolid LIKE LINE OF ls_job_info-spoolids.
+    LOOP AT ls_job_info-spoolids INTO ls_spoolid.
+      IF ls_spoolid NE space.
+        PERFORM protocol_update_spool USING '342' ls_spoolid
+                                            space space space.
+      ENDIF.
+    ENDLOOP.
+    ls_composer_param-tdcopies = nast_anzal.
+    IF NOT nast_tdarmod IS INITIAL.
+      nast-tdarmod = nast_tdarmod.
+      CLEAR nast_tdarmod.
+    ENDIF.
+
+  ENDIF.
+
+* get SmartForm protocoll and store it in the NAST protocoll
+* PERFORM ADD_SMFRM_PROT.
+
+ENDFORM.                    "PROCESSING
