@@ -1,0 +1,400 @@
+FM Exit: EXIT_SAPLEBND_002
+Include: INCLUDE ZXM06U22.
+TCODE : ME28
+
+FUNCTION zme28_po_rej.
+*"----------------------------------------------------------------------
+*"*"Local Interface:
+*"  IMPORTING
+*"     VALUE(I_CEKKO) TYPE  CEKKO OPTIONAL
+*"     VALUE(IT_BEKPO) TYPE  MMPUR_BEKPO OPTIONAL
+*"  EXPORTING
+*"     VALUE(ET_RETURN) TYPE  BAPIRET2_T
+*"----------------------------------------------------------------------
+
+*  TYPES : BEGIN OF lty_final,
+*            ebeln      TYPE ebeln,
+*            ebelp      TYPE ebelp,
+*            matnr      TYPE matnr,
+*            txz01      TYPE txz01,
+*            menge      TYPE bstmg,
+*            zplp1      TYPE dzplp1,
+*            netpr      TYPE bprei,
+*            netpr_l    TYPE bprei,
+*            netpr_pv   TYPE bprei,
+*            netpr_pv%  TYPE bprei,
+*            netpr_pvrs TYPE bprei,
+*            zterm      TYPE text50,
+*            remarks    TYPE char255,
+*            ernam      TYPE ernam,
+*          END OF lty_final.
+
+  TYPES : BEGIN OF lty_ekko,
+            ebeln TYPE ebeln,
+          END OF lty_ekko.
+  DATA lt_ekko_bsart TYPE TABLE OF lty_ekko.
+  FIELD-SYMBOLS <ls_ekpo> TYPE ekpo.
+  DATA : ls_final      TYPE lty_final,
+         lt_final      TYPE TABLE OF lty_final,
+         lt_ekpo       TYPE TABLE OF ekpo,
+         ls_ekpo       TYPE ekpo,
+         lt_ekpo_matnr TYPE TABLE OF ekpo,
+         lt_ekko_matnr TYPE TABLE OF ekko,
+         ls_ekko_matnr TYPE ekko,
+         ls_ekpo_matnr TYPE ekpo,
+         lt_mbew       TYPE TABLE OF mbew,
+         ls_mbew       TYPE mbew,
+         ls_bekpo      TYPE bekpo,
+         ls_ekko       TYPE ekko,
+         t052          TYPE t052,
+         zbtxt         TYPE TABLE OF ttext WITH HEADER LINE,
+         lv_price_l    TYPE bprei.
+
+  DATA ls_return TYPE bapiret2.
+  DATA es_exit TYPE slis_exit_by_user.
+
+  IF i_cekko-bsart = 'Z005' OR
+   i_cekko-bsart = 'Z006'.
+    READ TABLE it_bekpo INTO ls_bekpo INDEX 1.
+
+    SELECT SINGLE * FROM ekko INTO ls_ekko
+           WHERE ebeln = ls_bekpo-ebeln AND
+                 bsart = i_cekko-bsart.
+
+
+    SELECT        * FROM ekpo
+                    INTO TABLE lt_ekpo
+                    WHERE ebeln = ls_bekpo-ebeln.
+    IF sy-subrc EQ 0.
+      SELECT * FROM mbew
+               INTO TABLE lt_mbew
+               FOR ALL ENTRIES IN lt_ekpo
+               WHERE matnr = lt_ekpo-matnr AND
+                     bwkey = lt_ekpo-werks.
+      SELECT * FROM ekpo
+               INTO TABLE lt_ekpo_matnr
+               FOR ALL ENTRIES IN lt_ekpo
+               WHERE ebeln LT ls_ekko-ebeln AND " Taking previous PO of rejected PO
+                     matnr = lt_ekpo-matnr AND
+                     loekz NE 'L'.
+      IF sy-subrc EQ 0.
+
+        SELECT ebeln FROM ekko
+               INTO TABLE lt_ekko_bsart
+               FOR ALL ENTRIES IN lt_ekpo_matnr
+               WHERE ebeln = lt_ekpo_matnr-ebeln AND
+                     bsart = i_cekko-bsart.
+        IF sy-subrc EQ 0.
+          LOOP AT lt_ekpo_matnr ASSIGNING <ls_ekpo>.
+            READ TABLE lt_ekko_bsart TRANSPORTING NO FIELDS
+                       WITH KEY ebeln = <ls_ekpo>-ebeln.
+            IF sy-subrc NE 0.
+              CLEAR <ls_ekpo>.
+            ENDIF.
+          ENDLOOP.
+          SORT lt_ekpo_matnr BY ebeln DESCENDING ebelp DESCENDING.
+          DELETE lt_ekpo_matnr WHERE ebeln IS INITIAL.
+          IF NOT lt_ekpo_matnr IS INITIAL.
+            SELECT * FROM ekko
+                     INTO TABLE lt_ekko_matnr
+                     FOR ALL ENTRIES IN lt_ekpo_matnr
+                     WHERE ebeln = lt_ekpo_matnr-ebeln.
+          ENDIF.
+        ENDIF.
+      ENDIF.
+*      IF sy-subrc EQ 0.
+*        SORT lt_ekpo_matnr BY ebeln DESCENDING ebelp DESCENDING.
+**      DELETE ADJACENT DUPLICATES FROM lt_ekpo_matnr COMPARING matnr.
+*      ENDIF.
+
+      LOOP AT lt_ekpo INTO ls_ekpo.
+        ls_final-ebeln = ls_ekpo-ebeln.
+        ls_final-ebelp = ls_ekpo-ebelp.
+        ls_final-matnr = ls_ekpo-matnr.
+        ls_final-txz01 = ls_ekpo-txz01.
+        ls_final-menge = ls_ekpo-menge.
+        ls_final-netpr = ls_ekpo-netpr * ls_ekko-wkurs.
+*      ls_final-zterm = ls_ekko-zterm."i_cekko-zterm.
+        IF ls_ekko-zterm EQ space.
+          t052-ztag1 = ls_ekko-zbd1t.
+          t052-zprz1 = ls_ekko-zbd1p.
+          t052-ztag2 = ls_ekko-zbd2t.
+          t052-zprz2 = ls_ekko-zbd2p.
+          t052-ztag3 = ls_ekko-zbd3t.
+        ENDIF.
+        ls_final-ernam = ls_ekko-ernam.
+
+        CALL FUNCTION 'FI_PRINT_ZTERM'
+          EXPORTING
+            i_zterm         = ls_ekko-zterm
+            i_langu         = ls_ekko-spras
+            i_xt052u        = ' '
+            i_t052          = t052
+          TABLES
+            t_ztext         = zbtxt[]
+          EXCEPTIONS
+            zterm_not_found = 01.
+
+        READ TABLE zbtxt INDEX 1.
+        IF sy-subrc EQ 0.
+          ls_final-zterm = zbtxt-text1.
+          DELETE zbtxt INDEX 1.
+        ENDIF.
+        READ TABLE lt_mbew INTO ls_mbew
+             WITH KEY matnr = ls_ekpo-matnr
+                      bwkey = ls_ekpo-werks
+                      vprsv = 'V'.
+        IF sy-subrc EQ 0.
+          ls_final-zplp1 = ls_mbew-zplp1 .
+
+        ENDIF.
+        CLEAR ls_ekpo_matnr.
+        READ TABLE lt_ekpo_matnr INTO ls_ekpo_matnr
+                   WITH KEY matnr = ls_ekpo-matnr.
+        IF sy-subrc EQ 0.
+          CLEAR ls_ekko_matnr.
+          READ TABLE lt_ekko_matnr INTO ls_ekko_matnr
+                     WITH KEY ebeln = ls_ekpo_matnr-ebeln.
+          IF sy-subrc EQ 0.
+            ls_final-netpr_l = ls_ekpo_matnr-netpr * ls_ekko_matnr-wkurs.
+          ENDIF.
+        ENDIF.
+        lv_price_l = ls_final-zplp1 - ls_final-netpr_l
+        .
+        IF ls_final-zplp1 IS INITIAL.
+          ls_final-netpr_pv = 0.
+          ls_final-netpr_pv% = 0.
+          ls_final-netpr_pvrs = 0.
+        ELSE.
+*        ls_final-netpr_pv = ls_final-netpr - ls_final-zplp1.
+          ls_final-netpr_pv = ls_final-zplp1 - ls_final-netpr." - ls_final-zplp1.
+*          IF ls_final-zplp1 GT 0.
+          ls_final-netpr_pv% = ( ls_final-netpr_pv / ls_final-zplp1 ) * 100.
+*          ELSE.
+*            ls_final-netpr_pv% = 0.
+*          ENDIF.
+*        ls_final-netpr_pvrs = ls_final-netpr_pv * ls_final-zplp1.
+          ls_final-netpr_pvrs = ls_final-netpr_pv * ls_final-menge.
+
+        ENDIF.
+        APPEND ls_final TO lt_final.
+      ENDLOOP.
+    ENDIF.
+
+
+    DATA lt_fcat TYPE slis_t_fieldcat_alv.
+    DATA ls_fcat TYPE slis_fieldcat_alv.
+
+    DATA lv_exit TYPE abap_bool.
+    DATA wa_selfield TYPE slis_selfield.
+    IF NOT lt_final IS INITIAL.
+      ls_fcat-fieldname = 'MATNR'.
+      ls_fcat-seltext_l = 'Item Code'.
+      ls_fcat-seltext_m = 'Item Code'.
+      ls_fcat-seltext_s = 'Item Code'.
+      APPEND ls_fcat TO lt_fcat.
+
+      CLEAR ls_fcat.
+      ls_fcat-fieldname = 'TXZ01'.
+      ls_fcat-seltext_l = 'Item Name'.
+      ls_fcat-seltext_m = 'Item Name'.
+      ls_fcat-seltext_s = 'Item Name'.
+      ls_fcat-outputlen = '40'.
+      APPEND ls_fcat TO lt_fcat.
+
+      CLEAR ls_fcat.
+      ls_fcat-fieldname = 'MENGE'.
+      ls_fcat-seltext_l = 'PO Qty'.
+      ls_fcat-seltext_m = 'PO Qty'.
+      ls_fcat-seltext_s = 'PO Qty'.
+      APPEND ls_fcat TO lt_fcat.
+
+      CLEAR ls_fcat.
+      ls_fcat-fieldname = 'ZPLP1'.
+      ls_fcat-seltext_l = 'Budget Rate'.
+      ls_fcat-seltext_m = 'Budget Rate'.
+      ls_fcat-seltext_s = 'Budget Rate'.
+      APPEND ls_fcat TO lt_fcat.
+
+      CLEAR ls_fcat.
+      ls_fcat-fieldname = 'NETPR'.
+      ls_fcat-seltext_l = 'Net Price'.
+      ls_fcat-seltext_m = 'Net Price'.
+      ls_fcat-seltext_s = 'Net Price'.
+      APPEND ls_fcat TO lt_fcat.
+
+      CLEAR ls_fcat.
+      ls_fcat-fieldname = 'NETPR_L'.
+      ls_fcat-seltext_l = 'Last Price'.
+      ls_fcat-seltext_m = 'Last Price'.
+      ls_fcat-seltext_s = 'Last Price'.
+      APPEND ls_fcat TO lt_fcat.
+
+      CLEAR ls_fcat.
+      ls_fcat-fieldname = 'NETPR_PV'.
+      ls_fcat-seltext_l = 'Prc Var/Kg'.
+      ls_fcat-seltext_m = 'Prc Var/Kg'.
+      ls_fcat-seltext_s = 'Prc Var/Kg'.
+      APPEND ls_fcat TO lt_fcat.
+
+      CLEAR ls_fcat.
+      CLEAR ls_fcat.
+      ls_fcat-fieldname = 'NETPR_PV%'.
+      ls_fcat-seltext_l = 'Prc Var/%'.
+      ls_fcat-seltext_m = 'Prc Var/%'.
+      ls_fcat-seltext_s = 'Prc Var/%'.
+      APPEND ls_fcat TO lt_fcat.
+
+      CLEAR ls_fcat.
+      CLEAR ls_fcat.
+      ls_fcat-fieldname = 'NETPR_PVRS'.
+      ls_fcat-seltext_l = 'Prc Var in Rs'."'Variance in Rs'.
+      ls_fcat-seltext_m = 'Prc Var in Rs'.
+      ls_fcat-seltext_s = 'Prc Var in Rs'.
+      ls_fcat-outputlen = '20'.
+      APPEND ls_fcat TO lt_fcat.
+
+      CLEAR ls_fcat.
+      ls_fcat-fieldname = 'ZTERM'.
+      ls_fcat-seltext_l = 'Pymnt Term'.
+      ls_fcat-seltext_m = 'Pymnt Term'.
+      ls_fcat-seltext_s = 'Pymnt Term'.
+      ls_fcat-outputlen = '30'.
+      APPEND ls_fcat TO lt_fcat.
+
+      CLEAR ls_fcat.
+      ls_fcat-fieldname = 'REMARKS'.
+      ls_fcat-seltext_l = 'Remarks'.
+      ls_fcat-seltext_m = 'Remarks'.
+      ls_fcat-seltext_s = 'Remarks'.
+      ls_fcat-outputlen = '125'.
+      ls_fcat-edit = 'X'.
+      ls_fcat-input = 'X'.
+      APPEND ls_fcat TO lt_fcat.
+
+      CLEAR ls_fcat.
+
+*      CALL FUNCTION 'REUSE_ALV_POPUP_TO_SELECT'
+*        EXPORTING
+*          i_title               = 'Price Variance POP report'
+**         I_SELECTION           = 'X'
+*          i_zebra               = 'X'
+*          i_screen_start_column = 20
+*          i_screen_start_line   = 05
+*          i_screen_end_column   = 105
+*          i_screen_end_line     = 20
+**         I_CHECKBOX_FIELDNAME  =
+**         I_LINEMARK_FIELDNAME  =
+**         I_SCROLL_TO_SEL_LINE  = 'X'
+*          i_tabname             = 'LT_FINAL'
+**         i_structure_name      = 'T134'
+*          it_fieldcat           = lt_fcat
+**         IT_EXCLUDING          =
+**         i_callback_program    = lv_repid
+**         i_callback_user_command = 'USER_COMMAND'
+**         is_private            = wa_private
+*        IMPORTING
+*          es_selfield           = wa_selfield
+*          e_exit                = lv_exit
+*        TABLES
+*          t_outtab              = lt_final
+*        EXCEPTIONS
+*          program_error         = 1
+*          OTHERS                = 2.
+*      IF sy-subrc NE 0.
+***HANDLE SOMETHING
+*      ENDIF.
+      CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+        EXPORTING
+          it_fieldcat            = lt_fcat
+          i_screen_start_column  = 20
+          i_screen_start_line    = 05
+          i_screen_end_column    = 105
+          i_screen_end_line      = 20
+        IMPORTING
+          es_exit_caused_by_user = es_exit
+        TABLES
+          t_outtab               = lt_final[]
+        EXCEPTIONS
+          program_error          = 1
+          OTHERS                 = 2.
+
+      IF sy-subrc <> 0.
+* Implement suitable error handling here
+      ENDIF.
+
+      IF es_exit-back EQ abap_true.
+        DATA lv_name TYPE thead-tdname.
+        DATA lt_text            TYPE TABLE OF tline.
+        DATA lw_text            TYPE tline.
+        DATA lw_head            TYPE thead.
+        LOOP AT lt_final INTO ls_final WHERE NOT remarks IS INITIAL.
+          CLEAR : lv_name, lw_text, lw_head.
+          REFRESH lt_text.
+          CONCATENATE ls_final-ebeln ls_final-ebelp INTO lv_name.
+          CALL FUNCTION 'READ_TEXT'
+            EXPORTING
+              id       = 'F01'
+              language = sy-langu
+              name     = lv_name
+              object   = 'EKPO'
+            TABLES
+              lines    = lt_text
+            EXCEPTIONS
+              OTHERS   = 1.
+          IF NOT lt_text IS INITIAL .
+            lw_text = ' '.
+            APPEND lw_text TO lt_text.
+            CLEAR : lw_text.
+
+            lw_text-tdline = ls_final-remarks.
+            APPEND lw_text TO lt_text.
+
+            IF lt_text[] IS NOT INITIAL.
+
+              lw_head-tdobject = 'EKPO'.
+              lw_head-tdname = lv_name.
+              lw_head-tdid = 'F01'.
+              lw_head-tdspras = sy-langu.
+
+              CALL FUNCTION 'SAVE_TEXT'
+                EXPORTING
+                  header          = lw_head
+                  savemode_direct = 'X'
+                TABLES
+                  lines           = lt_text.
+            ENDIF.
+          ELSE.
+            CLEAR : lw_text.
+            REFRESH lt_text.
+            lw_text-tdline = ls_final-remarks.
+            APPEND lw_text TO lt_text.
+            IF lt_text[] IS NOT INITIAL.
+
+              CALL FUNCTION 'CREATE_TEXT'
+                EXPORTING
+                  fid       = 'F01'
+                  flanguage = sy-langu
+                  fname     = lv_name
+                  fobject   = 'EKPO'
+                TABLES
+                  flines    = lt_text.
+            ENDIF.
+
+          ENDIF.
+        ENDLOOP.
+        PERFORM send_mail USING ls_ekko
+                                lt_final.
+        ls_return-type = 'E'.
+        ls_return-message = 'Approval has been rejected'.
+        APPEND ls_return TO et_return.
+*        MESSAGE 'Approval has been rejected' TYPE 'E'.
+*    ELSEIF NOT wa_selfield IS INITIAL.
+*      MESSAGE 'Choose the "OK"/"Cancel" Button only' TYPE 'E'.
+      ENDIF.
+    ENDIF.
+  ENDIF.
+
+
+
+ENDFUNCTION.
