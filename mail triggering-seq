@@ -1,0 +1,140 @@
+FORM send_mail  USING    ls_ekko TYPE ekko
+                         lt_final TYPE ltt_final.
+  DATA: gt_usr21 TYPE TABLE OF usr21,
+        gs_usr21 TYPE usr21,
+        gt_adr6  TYPE TABLE OF adr6,
+        gs_adr6  TYPE adr6,
+        ls_final TYPE lty_final.
+
+  DATA: gs_content  TYPE sodocchgi1,
+        gt_mailbody TYPE TABLE OF soli,
+        gs_mailbody TYPE soli,
+        gt_receiver TYPE TABLE OF somlrec90,
+        gs_receiver TYPE somlrec90.
+
+
+  DATA: lit_email_body     TYPE bcsy_text,
+        lit_binary_content TYPE solix_tab,
+        lit_lines          TYPE TABLE OF tline,
+        lwa_email_body     TYPE soli,
+        lwa_line           TYPE tline,
+        lv_sent            TYPE os_boolean,
+        lv_subject         TYPE char50.
+
+  SELECT * FROM usr21
+    INTO TABLE gt_usr21
+    WHERE bname IN (ls_ekko-ernam , sy-uname).
+
+  IF NOT gt_usr21[] IS INITIAL.
+    SELECT * FROM adr6
+    INTO TABLE gt_adr6
+    FOR ALL ENTRIES IN gt_usr21
+    WHERE addrnumber = gt_usr21-addrnumber
+          AND persnumber = gt_usr21-persnumber.
+  ENDIF.
+
+  CONCATENATE ls_ekko-ebeln  'PO rejected remarks' INTO lv_subject SEPARATED BY space.
+  CONDENSE lv_subject.
+
+  gs_content-obj_name = lv_subject.
+  gs_content-obj_langu = sy-langu.
+  gs_content-obj_descr = lv_subject.
+
+  gs_mailbody-line = 'Dear Sir,'.
+  APPEND gs_mailbody TO gt_mailbody.
+  CLEAR gs_mailbody.
+
+  APPEND '<br>' to  gt_mailbody.
+  APPEND '<br>' to  gt_mailbody.
+  APPEND '<br>' to  gt_mailbody.
+
+  " Table format data................
+*  gs_mailbody-line = '<!DOCTYPE html>'."
+*  APPEND gs_mailbody TO gt_mailbody.
+*  CLEAR gs_mailbody-line.
+*
+*  gs_mailbody-line = '<html>'."
+*  APPEND gs_mailbody TO gt_mailbody.
+*  CLEAR gs_mailbody-line.
+
+  CONCATENATE '<style>'
+              'table, th, td' '{ border: 0.03px solid black; }'
+              '</style>'
+              INTO gs_mailbody-line.
+  APPEND gs_mailbody TO gt_mailbody.
+
+  CLEAR : gs_mailbody.
+  CONCATENATE '<table>'
+              '<tr>'
+              '<th align="center">' 'Material No' '</th>'
+              '<th align="center">' 'Remarks'  '</th>'
+              '</tr>'
+              INTO gs_mailbody-line.
+  APPEND gs_mailbody TO gt_mailbody.
+
+  LOOP AT lt_final INTO ls_final
+       WHERE NOT remarks IS INITIAL.
+    CONCATENATE '<tr>'
+            '<td align="center">' ls_final-matnr '</td>'
+            '<td align="center">' ls_final-remarks  '</td>'
+            '</tr>'
+*            '</Table>'
+            INTO gs_mailbody-line.
+    APPEND gs_mailbody TO gt_mailbody.
+    CLEAR gs_mailbody .
+  ENDLOOP.
+  gs_mailbody-line = '</table>'.
+  APPEND gs_mailbody TO gt_mailbody.
+  CLEAR gs_mailbody-line.
+
+*  gs_mailbody-line = '/html>'."
+*  APPEND gs_mailbody TO gt_mailbody.
+*  CLEAR gs_mailbody-line.
+
+
+  APPEND '<br>' to  gt_mailbody.
+  APPEND '<br>' to  gt_mailbody.
+  APPEND '<br>' to  gt_mailbody.
+*  APPEND INITIAL LINE TO gt_mailbody.
+*  APPEND INITIAL LINE TO gt_mailbody.
+
+  CLEAR : gs_mailbody.
+  gs_mailbody-line = 'This is auto generated email. Please do not reply.'.
+  APPEND gs_mailbody TO gt_mailbody.
+  CLEAR : gs_mailbody.
+
+  LOOP AT gt_adr6 INTO gs_adr6.
+    gs_receiver-rec_type = 'U'.
+    gs_receiver-receiver = gs_adr6-smtp_addr.
+    APPEND gs_receiver TO gt_receiver.
+    CLEAR gs_receiver.
+  ENDLOOP.
+
+****** send email  *******
+  IF NOT gt_receiver IS INITIAL.
+*    CONSTANTS : gc_c_htm      TYPE char3   VALUE 'HTM',
+    CALL FUNCTION 'SO_NEW_DOCUMENT_SEND_API1'
+      EXPORTING
+        document_data              = gs_content
+        document_type              = 'HTM'
+      TABLES
+        object_content             = gt_mailbody
+        receivers                  = gt_receiver
+      EXCEPTIONS
+        too_many_receivers         = 1
+        document_not_sent          = 2
+        document_type_not_exist    = 3
+        operation_no_authorization = 4
+        parameter_error            = 5
+        x_error                    = 6
+        enqueue_error              = 7
+        OTHERS                     = 8.
+    IF sy-subrc <> 0.
+* Implement suitable error handling here
+    ELSE.
+      COMMIT WORK.
+      SUBMIT rsconn01 WITH mode = 'INT' AND RETURN.
+    ENDIF.
+  ENDIF.
+
+ENDFORM.
