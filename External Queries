@@ -1,0 +1,89 @@
+class ZCL_BI_HANA definition
+  public
+  final
+  create public .
+
+public section.
+
+  data GO_CON type ref to CL_SQL_CONNECTION .
+  data GO_SQL type ref to CL_SQL_STATEMENT .
+  data GO_RESULT type ref to CL_SQL_RESULT_SET .
+  data GX_SQL_EXC type ref to CX_SQL_EXCEPTION .
+  data GR_DATA type ref to DATA .
+  data GV_TEXT type STRING .
+
+  methods GET_DATA_FROM_HANA
+    importing
+      value(IM_CON) type DBCON-CON_NAME default 'HC_HANA'
+      !IM_SQL_QRY type STRING
+    exporting
+      !EX_RESULT type ANY
+      !EX_ERROR like GV_TEXT .
+  methods EXECUTE_STATEMENT
+    importing
+      !IM_CON type DBCON-CON_NAME default 'HC_HANA'
+      !IM_SQL_QRY type STRING
+    exporting
+      !EX_ERROR like GV_TEXT .
+protected section.
+private section.
+ENDCLASS.
+
+
+
+CLASS ZCL_BI_HANA IMPLEMENTATION.
+
+
+  METHOD execute_statement.
+    TRY.
+        go_con = cl_sql_connection=>get_connection( im_con ).
+        TRY.
+            CREATE OBJECT go_sql
+              EXPORTING
+                con_ref = go_con.
+
+            go_sql->execute_query( im_sql_qry ).
+
+          CATCH cx_sql_exception  INTO gx_sql_exc.
+            gv_text = gx_sql_exc->get_text( ).
+            ex_error = gv_text.
+            CLEAR : gv_text.
+        ENDTRY.
+        go_con->close( ).
+      CATCH cx_sql_exception  INTO gx_sql_exc.
+        gv_text = gx_sql_exc->get_text( ).
+        ex_error = gv_text.
+        CLEAR : gv_text.
+    ENDTRY.
+
+  ENDMETHOD.
+
+
+  METHOD get_data_from_hana.
+    TRY.
+        go_con = cl_sql_connection=>get_connection( im_con ).
+        TRY.
+            CREATE OBJECT go_sql
+              EXPORTING
+                con_ref = go_con.
+
+            go_result = go_sql->execute_query( im_sql_qry ).
+
+            GET REFERENCE OF ex_result INTO gr_data.
+            go_result->set_param_table( gr_data ).
+            go_result->next_package( ).
+            go_result->close( ).
+          CATCH cx_sql_exception  INTO gx_sql_exc.
+            gv_text = gx_sql_exc->get_text( ).
+            ex_error = gv_text.
+            CLEAR : gv_text.
+        ENDTRY.
+*        go_con->close( ).
+      CATCH cx_sql_exception  INTO gx_sql_exc.
+        gv_text = gx_sql_exc->get_text( ).
+        ex_error = gv_text.
+        CLEAR : gv_text.
+    ENDTRY.
+    go_con->close( ).
+  ENDMETHOD.
+ENDCLASS.
