@@ -1,0 +1,127 @@
+FORM write_application_log .
+  obj  = 'ZSEQUENT'.
+  sub  = 'ZSD_SCROLL'.
+  ext  = ' '.
+  text1 = 'S'.                          "Standardtext
+  date_del = 1.                         "Verfalldatum = akt.Datum - 1
+  PERFORM header_init USING text1 ' ' date_del .
+  CALL FUNCTION 'APPL_LOG_WRITE_HEADER'
+    EXPORTING
+      header = header.
+
+  PERFORM fill_log_params.
+  CALL FUNCTION 'APPL_LOG_WRITE_LOG_PARAMETERS'
+    EXPORTING
+      object                   = ' '
+      subobject                = ' '
+    TABLES
+      parameters               = params
+    EXCEPTIONS
+      no_header                = 01
+      no_text_and_no_user_exit = 02
+      object_not_found         = 03
+      subobject_not_found      = 04.
+
+  PERFORM fill_messages USING 'E' 23 'S'.
+  CALL FUNCTION 'APPL_LOG_WRITE_MESSAGES'
+    EXPORTING
+      object              = ' '
+      subobject           = ' '
+      update_or_insert    = 'I'
+    TABLES
+      messages            = messages
+    EXCEPTIONS
+      object_not_found    = 01
+      subobject_not_found = 02.
+
+  CALL FUNCTION 'APPL_LOG_WRITE_DB'
+    EXPORTING
+      object                = obj
+      subobject             = sub
+    TABLES
+      object_with_lognumber = logs
+    EXCEPTIONS
+      object_not_found      = 01
+      subobject_not_found   = 02.
+
+ENDFORM.                    " WRITE_APPLICATION_LOG
+
+
+
+*&---------------------------------------------------------------------*
+*&      Form  fill_messages
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->TEXT       text
+*----------------------------------------------------------------------*
+FORM fill_messages  USING type no text.
+  DATA: lv_msgv1 LIKE messages-msgv1, lv_msgv2 LIKE messages-msgv1.
+
+  CONCATENATE 'TC:' sy-tcode 'User:' sy-uname 'Date:' sy-datum 'Time:'
+    sy-uzeit INTO lv_msgv1 SEPARATED BY space.
+  CLEAR: messages, messages[].
+  messages-msgty     = 'I'.
+  messages-msgid     = 'YW'.
+  messages-msgno     = '000'.
+  messages-msgv1     = lv_msgv1.
+  messages-altext    = 'Scroll Log'.
+  messages-detlevel  = '1'.
+  messages-probclass =  c_detlevel + 1.
+  APPEND messages.
+
+  CONCATENATE 'Scr. No.' i_invhead-scrnum 'Co.Cd.' i_invhead-bukrs
+        INTO lv_msgv1 SEPARATED BY space.
+  CONCATENATE 'AP Cd.' i_invhead-apcode 'Year' i_invhead-syear
+        INTO lv_msgv2 SEPARATED BY space.
+  CLEAR: messages.
+  messages-msgty     = 'I'.
+  messages-msgid     = 'YW'.
+  messages-msgno     = '000'.
+  messages-msgv1     = lv_msgv1.
+  messages-msgv2     = lv_msgv2.
+  messages-altext    = 'Scroll Log'.
+  messages-detlevel  = '1'.
+  messages-probclass =  c_detlevel + 1.
+  APPEND messages.
+
+  CONCATENATE 'Currproc:' i_invhead-currproc INTO lv_msgv1
+      SEPARATED BY space.
+  CLEAR: messages.
+  messages-msgty     = 'I'.
+  messages-msgid     = 'YW'.
+  messages-msgno     = '000'.
+  messages-msgv1     = lv_msgv1.
+  messages-altext    = 'Scroll Log'.
+  messages-detlevel  = '1'.
+  messages-probclass =  c_detlevel + 1.
+  APPEND messages.
+ENDFORM.                    " fill_messages
+*&---------------------------------------------------------------------*
+*&      Form  fill_log_params
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+FORM fill_log_params .
+  CLEAR params.
+  REFRESH params.
+  params-param = 'P1'.
+  params-value = header-object.
+  APPEND params.
+
+  params-param = 'P2'.
+  params-value = header-subobject.
+  APPEND params.
+
+  params-param = 'P3'.
+  params-value = header-extnumber.
+  APPEND params.
+
+  params-param = 'P4'.
+  params-value = header-aldate.
+  APPEND params.
+
+  params-param = 'P5'.
+  params-value = header-altime.
+  APPEND params.
+ENDFORM.                    " fill_log_params
