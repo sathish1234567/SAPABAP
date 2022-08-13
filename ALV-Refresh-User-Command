@@ -1,0 +1,38 @@
+FORM user_command USING lv_okcode LIKE sy-ucomm l_selfield TYPE slis_selfield.
+
+* assign the function code to variable v_okcode
+  lv_okcode = sy-ucomm.
+
+* handle the code execution based on the function code encountered
+  CASE lv_okcode.
+
+* when the function code is SAVE then save the records from
+* alv to internal table
+    WHEN 'SAVE'.
+
+* to reflect the data changed into internal table
+      DATA : ref_grid TYPE REF TO cl_gui_alv_grid. "new
+
+      IF ref_grid IS INITIAL.
+        CALL FUNCTION 'GET_GLOBALS_FROM_SLVC_FULLSCR'
+          IMPORTING
+            e_grid = ref_grid.
+      ENDIF.
+
+      IF NOT ref_grid IS INITIAL.
+        CALL METHOD ref_grid->check_changed_data.
+      ENDIF.
+
+* refresh the ALV Grid output from internal table
+      l_selfield-refresh = c_check.
+
+* check for mandatory field value
+      LOOP AT it_final.
+        IF <field1> is initial.
+          MESSAGE e000(zz). "error enter all mandatory fields
+        ENDIF.
+      ENDLOOP.
+
+  ENDCASE.
+ENDFORM.                    "USER_COMMAND
+Hope this helps you.
