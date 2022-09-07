@@ -1,0 +1,108 @@
+ SUBMIT ZBD_SD_MUSAK17_N WITH SELECTION-TABLE LT_SELSCREEN
+                          WITH S_WERKS IN S_WERKS
+                          WITH S_MATNR IN S_MATNR
+                          WITH P_MONTH EQ P_MONTH
+                          WITH P_YEAR  EQ P_YEAR
+                          AND RETURN.
+
+  TRY.
+
+      CL_SALV_BS_RUNTIME_INFO=>GET_DATA_REF(        IMPORTING R_DATA = LR_DATA ).
+      ASSIGN LR_DATA->* TO <LT_DATA>.
+    CATCH CX_SALV_BS_SC_RUNTIME_INFO.
+
+      MESSAGE 'Unable to retrieve ALV data' TYPE 'E'.
+
+  ENDTRY.
+
+  IF <LT_DATA> IS ASSIGNED.
+    FIELD-SYMBOLS : <LV_DATA> TYPE ANY.
+    LOOP AT <LT_DATA> ASSIGNING <LS_DATA>.
+      MOVE-CORRESPONDING <LS_DATA> TO WA_FINAL17.
+      APPEND WA_FINAL17 TO T_FINAL17.
+      CLEAR: <LS_DATA>,WA_FINAL17.
+    ENDLOOP.
+  ENDIF.
+
+  SORT T_FINAL BY MATNR SNO.
+  SORT T_FINAL17 BY MATNR SNO.
+
+  DATA:V_STRING(2),
+       V_OFFSET    TYPE I,
+       V_OFFSET1   TYPE I,
+*       v_adrnr     TYPE t001w-adrnr,
+*       wa_adrc     TYPE adrc,
+       V_KUNNR     TYPE KNA1-KUNNR.
+
+  LOOP AT T_FINAL INTO FS_FINAL.
+    MOVE-CORRESPONDING FS_FINAL TO WA_FINAL_OUT.
+*    commented by shaik mastan vali on 24.04.2020
+
+*    IF wa_final_out-vbeln IS NOT INITIAL.
+*      IF wa_final_out-werks = '3100' OR wa_final_out-werks = '3400'.
+*      ELSE.
+*        SELECT SINGLE adrnr FROM t001w
+*         INTO v_adrnr
+*          WHERE werks = wa_final_out-werks.
+*        IF sy-subrc = 0.
+*          SELECT SINGLE * FROM adrc
+*           INTO wa_adrc
+*            WHERE addrnumber = v_adrnr.
+*          IF sy-subrc = 0.
+*            wa_final_out-addr = wa_adrc-name2.
+*          ENDIF.
+*        ENDIF.
+*      ENDIF.
+*    ENDIF.
+
+*    commented by shaik mastan vali on 24.04.2020
+    READ TABLE T_MUSAK INTO FS_MUSAK WITH KEY SR_NO = FS_FINAL-SNO MDATE = FS_FINAL-CHLDT
+                                              MATNR = FS_FINAL-MATNR.
+    IF SY-SUBRC = 0.
+      IF FS_MUSAK-TYPE = 'SALES' OR FS_MUSAK-TYPE = 'Inventory Adjustment'.
+        READ TABLE T_FINAL17 INTO WA_FINAL17 WITH KEY SNO = FS_FINAL-SNO CHLDT = FS_FINAL-CHLDT
+                                                      MATNR = FS_FINAL-MATNR.
+        IF SY-SUBRC = 0.
+          WA_FINAL_OUT-VBELN_17 = WA_FINAL17-VBELN.
+          WA_FINAL_OUT-DAT_TIM_17 = WA_FINAL17-DAT_TIM+0(10).
+          CONDENSE: WA_FINAL_OUT-DAT_TIM,WA_FINAL17-NAME1.
+          IF WA_FINAL17-NAME1 IS NOT INITIAL.
+            " commented by shaik mastan vali on 21.04.2020
+*            v_string = strlen( wa_final17-name1 ).
+*            FIND FIRST OCCURRENCE OF ')' IN wa_final17-name1 MATCH OFFSET v_offset.
+*            IF v_offset IS NOT INITIAL.
+*              v_offset = v_offset + 1.
+*            ENDIF.
+*            v_string = v_string - v_offset.
+            " commented by shaik mastan vali on 21.04.2020
+            WA_FINAL_OUT-NAME1_17 = WA_FINAL17-NAME1. "+v_offset(v_string).           " commented by shaik mastan vali on 21.04.2020
+          ENDIF.
+*         FIND FIRST OCCURRENCE OF '(' IN wa_final17-name1 MATCH OFFSET v_offset1.
+*         CLEAR:wa_adrc,v_adrnr.
+*         v_kunnr = wa_final17-name1+v_offset1(8).
+*         SELECT SINGLE adrnr stceg FROM kna1 INTO (v_adrnr, wa_final17-stceg ) WHERE kunnr = v_kunnr.
+*          IF sy-subrc = 0.
+*           SELECT SINGLE * FROM adrc
+*            INTO wa_adrc
+*             WHERE addrnumber = v_adrnr.
+*           IF sy-subrc = 0.
+*            CONCATENATE  wa_adrc-city1 wa_adrc-street INTO wa_final_out-addr_17 SEPARATED BY ',' .
+*           endif.
+*          ENDIF.
+*       else.
+          WA_FINAL_OUT-ADDR_17  = WA_FINAL17-ADDR.
+          WA_FINAL_OUT-STCEG_17 = WA_FINAL17-STCEG.
+*       endif.
+          WA_FINAL_OUT-DESC_17  = WA_FINAL17-DESC.
+          WA_FINAL_OUT-VAT_17  = WA_FINAL17-VAT.
+          WA_FINAL_OUT-INV_QTY_17  = WA_FINAL17-INV_QTY.
+          WA_FINAL_OUT-OUT_TAX_17  = WA_FINAL17-OUT_TAX.
+        ENDIF.
+      ENDIF.
+    ENDIF.
+    APPEND WA_FINAL_OUT TO T_FINAL_OUT.
+    CLEAR:FS_FINAL,FS_MUSAK,WA_FINAL17,WA_FINAL_OUT,V_STRING,V_OFFSET,V_OFFSET1,WA_ADRC.
+  ENDLOOP.
+  CL_SALV_BS_RUNTIME_INFO=>SET(    EXPORTING DISPLAY  = ABAP_TRUE
+                                                 METADATA = ABAP_FALSE
+                                                 DATA     = ABAP_TRUE ).
