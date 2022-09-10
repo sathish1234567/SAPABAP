@@ -1,0 +1,78 @@
+In order to add a footer which is always displayed on screen to an ALV grid report you need to perform the steps below. Please note this will not be displayed in the printed output
+
+Step 1. Update 'REUSE_ALV_GRID_DISPLAY' FM call to include parameter 'i_callback_html_end_of_list'
+
+Step 2. Create new FORM 'END_OF_LIST_HTML' for building footer
+
+
+ call function 'REUSE_ALV_GRID_DISPLAY'
+       exporting
+            i_callback_program      = gd_repid
+            i_callback_top_of_page   = 'TOP-OF-PAGE'
+            i_callback_html_end_of_list = 'END_OF_LIST_HTML'
+            is_layout               = gd_layout
+            it_fieldcat             = fieldcatalog[]
+            i_save                  = 'X'
+       tables
+            t_outtab                = it_ekko
+       exceptions
+            program_error           = 1
+            others                  = 2.
+
+*&-----------------------------------------------------------*
+*&      Form  end_of_list_html
+*&-----------------------------------------------------------*
+*       output at the end of the list - not in printed output*
+*&-----------------------------------------------------------*
+
+FORM end_of_list_html USING end TYPE REF TO cl_dd_document.
+  DATA: ls_text TYPE sdydo_text_element,
+        l_grid     TYPE REF TO cl_gui_alv_grid,
+        f(14) TYPE c VALUE 'SET_ROW_HEIGHT'.
+  ls_text = 'Footer title'.
+* adds and icon (red triangle)
+  CALL METHOD end->add_icon
+    EXPORTING
+      sap_icon = 'ICON_MESSAGE_ERROR_SMALL'.
+* adds test (via variable)
+  CALL METHOD end->add_text
+    EXPORTING
+      text         = ls_text
+      sap_emphasis = 'strong'.
+* adds new line (start new line)
+  CALL METHOD end->new_line.
+* display text(bold)
+  CALL METHOD end->add_text
+    EXPORTING
+      text         = 'Bold text'
+      sap_emphasis = 'strong'.
+* adds new line (start new line)
+  CALL METHOD end->new_line.
+* display text(normal)
+  CALL METHOD end->add_text
+    EXPORTING
+      text         = 'Normal text'.
+* adds new line (start new line)
+  CALL METHOD end->new_line.
+* display text(bold)
+  CALL METHOD end->add_text
+    EXPORTING
+      text         = 'Yellow triangle'
+      sap_emphasis = 'strong'.
+* adds and icon (yellow triangle)
+  CALL METHOD end->add_icon
+    EXPORTING
+      sap_icon = 'ICON_LED_YELLOW'.
+* display text(normal)
+  CALL METHOD end->add_text
+    EXPORTING
+      text         = 'More text'.
+*set height of this section
+  CALL FUNCTION 'GET_GLOBALS_FROM_SLVC_FULLSCR'
+    IMPORTING
+      e_grid = l_grid.
+  CALL METHOD l_grid->parent->parent->(f)
+    EXPORTING
+      id     = 3
+      height = 14.
+ENDFORM. "end_of_list_html.
