@@ -1,0 +1,111 @@
+*&---------------------------------------------------------------------*
+*& Report  YSAT_DWN_SE78
+*&
+*&---------------------------------------------------------------------*
+*&
+*&
+*&---------------------------------------------------------------------*
+REPORT ysat_dwn_se78.
+SELECTION-SCREEN: BEGIN OF BLOCK sel WITH FRAME TITLE text-000.
+
+PARAMETERS: pa_image LIKE rstxt-tdname.
+
+SELECTION-SCREEN BEGIN OF LINE.
+SELECTION-SCREEN POSITION 30.
+PARAMETERS: bw RADIOBUTTON GROUP icol DEFAULT 'X'.
+SELECTION-SCREEN COMMENT 35(30) text-001.
+SELECTION-SCREEN END OF LINE.
+
+SELECTION-SCREEN BEGIN OF LINE.
+SELECTION-SCREEN POSITION 30.
+PARAMETERS: color RADIOBUTTON GROUP icol.
+SELECTION-SCREEN COMMENT 35(30) text-002.
+SELECTION-SCREEN END OF LINE.
+
+SELECTION-SCREEN: END OF BLOCK sel.
+
+
+CHECK pa_image IS NOT INITIAL.
+
+DATA :
+  lv_bytecount TYPE i,
+  lv_tdbtype   LIKE stxbitmaps-tdbtype,
+  lv_content   TYPE STANDARD TABLE OF bapiconten INITIAL SIZE 0.
+
+DATA: graphic_size TYPE i.
+
+DATA:
+  BEGIN OF graphic_table OCCURS 0,
+    line(255) TYPE x,
+  END OF graphic_table.
+
+DATA: lv_export_file_name TYPE rlgrap-filename.
+
+CONCATENATE 'C:\Users\ADMIN\Desktop' pa_image '.bmp' INTO lv_export_file_name.
+
+
+IF bw EQ 'X'.
+  lv_tdbtype = 'BMON'. " Black and White Bitmap Image
+ELSE.
+  lv_tdbtype = 'BCOL'. " Color Bitmap Image
+ENDIF.
+
+
+*** get binary data from SAP BDS for specific graphics image
+CALL FUNCTION 'SAPSCRIPT_GET_GRAPHIC_BDS'
+  EXPORTING
+    i_object       = 'GRAPHICS' " STXBITMAPS-TDOBJECT
+    i_name         = pa_image " STXBITMAPS-TDNAME
+    i_id           = 'BMAP' " STXBITMAPS-TDID
+    i_btype        = lv_tdbtype " STXBITMAPS-TDBTYPE
+  IMPORTING
+    e_bytecount    = lv_bytecount " I
+  TABLES
+    content        = lv_content " SBDST_CONTENT
+  EXCEPTIONS
+    not_found      = 1
+    bds_get_failed = 2
+    bds_no_content = 3
+    OTHERS         = 4.
+
+CHECK sy-subrc IS INITIAL.
+
+
+
+*** convert graphics in BDS file format to BMP bitmap image format
+CALL FUNCTION 'SAPSCRIPT_CONVERT_BITMAP'
+  EXPORTING
+    old_format               = 'BDS' " source image file type
+    new_format               = 'BMP' " target image file type => .bmp
+    bitmap_file_bytecount_in = lv_bytecount
+  IMPORTING
+    bitmap_file_bytecount    = graphic_size
+  TABLES
+    bitmap_file              = graphic_table
+    bds_bitmap_file          = lv_content " SBDST_CONTENT
+  EXCEPTIONS
+    OTHERS                   = 1.
+
+CHECK sy-subrc IS INITIAL.
+
+
+
+CALL FUNCTION 'WS_DOWNLOAD'
+  EXPORTING
+    bin_filesize            = graphic_size
+    filename                = lv_export_file_name " 'u:\export.bmp'
+    filetype                = 'BIN'
+  TABLES
+    data_tab                = graphic_table
+  EXCEPTIONS
+    invalid_filesize        = 1
+    invalid_table_width     = 2
+    invalid_type            = 3
+    no_batch                = 4
+    unknown_error           = 5
+    gui_refuse_filetransfer = 6.
+
+IF sy-subrc <> 0.
+  MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+   WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+ENDIF.
