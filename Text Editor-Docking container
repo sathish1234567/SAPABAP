@@ -1,0 +1,49 @@
+DATA : text_editor     TYPE REF TO cl_gui_textedit  .
+DATA : go_dock_container TYPE REF TO cl_gui_docking_container .
+
+  IF go_dock_container IS INITIAL.
+    CREATE OBJECT go_dock_container
+        EXPORTING side = cl_gui_docking_container=>dock_at_left
+                  extension = 320
+                  ratio     = 25
+                  repid     = sy-repid
+                  dynnr     = '0100'.
+  ENDIF.
+
+
+if text_editor IS INITIAL.
+  CREATE OBJECT text_editor
+   EXPORTING
+      max_number_chars       = '600'
+      wordwrap_mode            = cl_gui_textedit=>wordwrap_at_fixed_position
+      wordwrap_position         = line
+      wordwrap_to_linebreak_mode = cl_gui_textedit=>true
+     parent                                    =  go_dock_container
+   EXCEPTIONS
+     error_cntl_create      = 1
+     error_cntl_init        = 2
+     error_cntl_link        = 3
+     error_dp_create        = 4
+     gui_type_not_supported = 5
+     OTHERS                 = 6
+     .
+
+  CALL METHOD text_editor->set_toolbar_mode
+    EXPORTING
+      toolbar_mode           = false
+    EXCEPTIONS
+      error_cntl_call_method = 1
+      invalid_parameter      = 2
+      OTHERS                 = 3.
+
+  CALL METHOD text_editor->set_statusbar_mode
+    EXPORTING
+      statusbar_mode         = false
+    EXCEPTIONS
+      error_cntl_call_method = 1
+      invalid_parameter      = 2
+      OTHERS                 = 3.
+
+  CALL METHOD text_editor->set_readonly_mode .
+
+ENDIF.
