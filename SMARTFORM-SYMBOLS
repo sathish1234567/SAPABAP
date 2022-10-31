@@ -1,0 +1,17 @@
+&symbol(Z)& Omit Leading Zeros
+
+&symbol(S)& Omit Leading Sign
+
+&symbol(<)& Display Leading Sign to the Left
+
+&symbol(>)& Display Leading Sign to the Right
+
+&symbol(C)& Compress Spaces
+
+&symbol(.N)& Display upto N decimal places
+
+&symbol(T)& Omit thousands separator
+
+&symbol(R)& Right justified
+
+&symbol(I)& Suppress output of the initial value
