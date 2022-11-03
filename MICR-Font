@@ -1,0 +1,73 @@
+https://wiki.scn.sap.com/wiki/display/ABAP/Printing+MICR+characters+from+SAP 
+
+Printing MICR characters from SAP
+Skip to end of metadata
+Created by Aidan Black, last modified by Gabor Filep on Mar 26, 2021Go to start of metadata
+Purpose
+This is an overview of the background, requirements and steps for printing of MICR characters from SAP. It also covers steps for troubleshooting when there are issue with this process. 
+
+Overview
+MICR stands for 'Magnetic Ink Character Recognition'. For more information about MICR click here.
+Usually the printer needs a special magnetic ink or toner. Mainly it is used to facilitate the reading of cheques. To print MICR characters from SAP, usually it is necessary that the printer contains these fonts internally. Uploaded true type fonts are also a possibility.
+
+
+
+This page is part of:
+
+Printing
+
+Tiny link (useful for e-mail):
+
+https://wiki.scn.sap.com/wiki/x/FIqOEg
+
+SAP Supported Printers:
+Traditionally, the supported printers were HP LaserJet printers with a Jetmobile MicrDIMM font DIMM installed or TROY printers which are are modified HP LaserJet printers with a TROY MICR font module installed.
+
+See the following URLs for more information about these products:
+https://www.jetmobile.com/micrdimm-check-printing
+http://www.troygroup.com/products/printers/micr_printers.aspx
+
+Special MICR Characters:
+The special MICR characters need to be entered with the values below in the form for JetMobile and Troy MICR:
+
+SAP Font MICR_C (MICR CMC-7):
+Character "transit" - enter the letter "D" in the form.
+Character "amount" - enter the letter "A" in the form.
+Character "on-us" - enter the letter "B" in the form.
+Character "dash" - enter the letter "C" in the form.
+Character "arrow" - enter the letter "E" in the form.
+SAP Font MICR_E (MICR E-13B):
+Character "transit" - enter the letter "A" in the form.
+Character "amount" - enter the letter "B" in the form.
+Character "on-us" - enter the letter "C" in the form.
+Character "dash" - enter the letter "D" in the form.
+Device Types for SAP printing:
+The device types HPLJMI or HP5MI are used for JetMobile.
+The device type TROYMICR is used for TROY MICR printers.
+
+Steps needed to print MICR from SAP:
+A suitable printer with the MICR fonts installed must be used.
+A compatible device type for the printer model must be used..
+The MICR_E or MICR_C font with correct size must be assigned to the MICR characters in the form.
+The correct characters must be entered in the SAPscript form or Smart Form for the special MICR characters as described above.
+Technical Description:
+The fonts are stored in the printer itself. So from the SAP system, a command sequence is sent to the printer to switch the printer to using this font. This command sequence is stored in a print control of the device type. You can see the command sequence via transaction SE73. e.g.
+SE73 → Printer Fonts → HPLJMI → MICR_E → SF450 → Displ Print Control
+SF450: 1B28384D1B28733070382E30306831302E30763073306231303054
+
+SE73 → Printer Fonts → HPLJMI → MICR_E → SF451 → Displ Print Control
+SF451: 1B28384D1B28733070382E30306831302E30763073306231303154      
+
+If you have a different printer model, then a possible solution is modify these command sequences to match those of your MICR printer model. In this case you need to find the required command sequences from the printer vendor or the user guide to activate the printers MICR fonts. Then you need to make a copy of the standard device type and add the required command sequences to the print controls.
+
+Troubleshooting:
+A very useful tool is to print the standard text SAPSCRIPT-MICRTEST via transaction SO10. This will check that the device type and printer model are capable to print MICR characters. If this doesn't work then the following reasons are possible:
+
+Printer does not contain correct MICR fonts.
+An incorrect device type is used.
+Printer has MICR fonts but they are not the standard ones supported by JetMobile or Troy. Then the correct commands needed to be added to the print controls of the device type as described above.
+If the standard text SAPSCRIPT-MICRTEST does not print the MICR characters correctly then the problem is with the SAPscript form or Smart Form. Some possible reasons are:
+
+Wrong font assigned to the MICR characters.
+Correct font but the wrong font size assigned to the MICR characters.
+The form was not activated after making the changes to add the MICR fonts.
