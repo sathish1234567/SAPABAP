@@ -1,0 +1,1137 @@
+METHOD if_ex_me_process_po_cust~check.
+  DATA : itab       TYPE purchase_order_items,
+         wa_data    TYPE mepoitem,
+         wa_datablk TYPE mepoitem,
+         wa         LIKE LINE OF itab.
+
+  DATA: ls_mepoheader TYPE mepoheader.
+
+  DATA: it_details    TYPE TABLE OF mepoitem.
+  DATA: it_details1   TYPE TABLE OF mepoitem.
+  DATA: wa_details    TYPE  mepoitem.
+
+  DATA: t_ausg  TYPE TABLE OF cdred_mmpur.
+  DATA: w_ausg  LIKE LINE OF t_ausg.
+
+  DATA: it_ekpo TYPE TABLE OF ekpo.
+  DATA: wa_ekpo TYPE ekpo.
+
+  DATA: wa_ekpoblk TYPE ekpo.
+  DATA: wa_usr05blk   TYPE usr05.
+  DATA: wa_usr05ublk TYPE usr05,
+        lv_gstdate   TYPE sy-datum,
+        lv_low       TYPE rvari_val_255,
+        lt_mwskz     TYPE STANDARD TABLE OF zinv_tax_cd.
+
+  SELECT SINGLE low FROM tvarvc INTO lv_low
+    WHERE name = 'GV_GSTDATE'.
+  IF sy-subrc = 0.
+    CONCATENATE lv_low+6(4) lv_low+3(2) lv_low+0(2)
+    INTO lv_gstdate.
+  ENDIF.
+
+
+***
+  ls_mepoheader = im_header->get_data( ).
+  IF ls_mepoheader-aedat GE lv_gstdate.
+    SELECT * FROM zinv_tax_cd INTO TABLE lt_mwskz.
+  ENDIF.
+  IF ls_mepoheader-bsart = 'NBA'.
+    IF ls_mepoheader-zcode IS INITIAL.
+      MESSAGE e002(zpo) WITH sy-uname.
+    ENDIF.
+
+    IF ls_mepoheader-zdept IS INITIAL.
+      MESSAGE e003(zpo) WITH sy-uname.
+    ENDIF.
+  ENDIF.
+
+  CALL METHOD im_header->get_items
+    RECEIVING
+      re_items = itab.
+
+  SELECT * FROM tvarvc
+    INTO TABLE @DATA(it_tvarvc_tmpo)
+    WHERE name = 'ZTMPO'.
+
+  LOOP AT itab INTO wa.
+
+    CALL METHOD wa-item->get_data
+      RECEIVING
+        re_data = wa_data.
+    "Validation added by _RD/SS 13.04.2020 - TM
+    READ TABLE it_tvarvc_tmpo INTO DATA(wa_tvarvc_tmpo) WITH KEY low = ls_mepoheader-bsart.
+    IF sy-subrc EQ 0.
+      SELECT SINGLE partner FROM but100
+        INTO @DATA(lv_partner)
+        WHERE partner = @wa_data-zztransporter AND
+              rltyp = 'CRM010'.
+      IF sy-subrc EQ 0.
+*        SELECT SINGLE partner FROM but000
+*          INTO @DATA(lv_partner)
+*          WHERE partner = @wa_data-zztransporter
+*          AND   bu_group EQ 'ZTVI'
+*          AND   xblck NE 'X'.
+*        IF sy-subrc NE 0.
+*          MESSAGE e009(zpo) WITH wa_data-zztransporter.
+*        ENDIF.
+*      ELSE.
+        MESSAGE e009(zpo) WITH wa_data-zztransporter.
+      ENDIF.
+    ENDIF.
+    APPEND wa_data TO it_details.
+    CLEAR : wa,wa_data.
+  ENDLOOP.
+***
+
+*<<<MEPO warning message to be prompt for Supplier ABC Classification
+
+  IF ls_mepoheader-zlfabc NE 'A'.
+    MESSAGE w132(zmsg) DISPLAY LIKE 'W'.
+  ENDIF.
+
+
+
+
+
+****2010006078
+  LOOP AT itab INTO wa.
+    CALL METHOD wa-item->get_data
+      RECEIVING
+        re_data = wa_datablk.
+
+    SELECT SINGLE * FROM ekpo INTO wa_ekpoblk
+    WHERE ebeln = wa_datablk-ebeln
+      AND ebelp = wa_datablk-ebelp.
+    IF sy-subrc IS INITIAL.
+
+      SELECT SINGLE * FROM usr05 INTO wa_usr05blk
+      WHERE bname = sy-uname
+      AND parid = 'ZPOBLK'.
+      IF sy-subrc IS INITIAL.
+        IF wa_usr05blk-parva IS INITIAL.
+          IF wa_ekpoblk-loekz IS INITIAL.
+            IF wa_datablk-loekz = 'S'.
+              MESSAGE e004(zpo).
+            ENDIF.
+          ENDIF.
+        ENDIF.
+      ELSE.
+        IF wa_ekpoblk-loekz IS INITIAL.
+          IF wa_datablk-loekz = 'S'.
+            MESSAGE e004(zpo).
+          ENDIF.
+        ENDIF.
+      ENDIF.
+
+      SELECT SINGLE * FROM usr05 INTO wa_usr05ublk
+      WHERE bname = sy-uname
+      AND parid = 'ZPOUBLK'.
+      IF sy-subrc IS INITIAL.
+        IF wa_usr05ublk-parva IS INITIAL.
+          IF wa_ekpoblk-loekz IS NOT INITIAL.
+            IF wa_datablk-loekz IS INITIAL.
+              MESSAGE e005(zpo).
+            ENDIF.
+          ENDIF.
+        ENDIF.
+      ELSE.
+        IF wa_ekpoblk-loekz IS NOT INITIAL.
+          IF wa_datablk-loekz IS INITIAL.
+            MESSAGE e005(zpo).
+          ENDIF.
+        ENDIF.
+      ENDIF.
+
+    ENDIF.
+    CLEAR : wa,wa_datablk, wa_ekpoblk.
+  ENDLOOP.
+****2010006078
+
+  SELECT * FROM ekpo
+    INTO TABLE it_ekpo
+     FOR ALL ENTRIES IN it_details
+   WHERE ebeln = it_details-ebeln
+     AND ebelp = it_details-ebelp
+     AND loekz NE space.
+
+  LOOP AT it_details INTO wa_data.
+
+
+
+    READ TABLE it_ekpo INTO wa_ekpo WITH KEY ebeln = wa_data-ebeln
+                                             ebelp = wa_data-ebelp.
+    IF sy-subrc IS INITIAL.
+*      break pmg-abap01.
+      IF ls_mepoheader-bsart = 'NB3' OR
+         ls_mepoheader-bsart = 'NB4'.
+        IF wa_data-loekz IS INITIAL.
+
+          CALL FUNCTION 'ME_CHANGEDOC_READ2'
+            EXPORTING
+              i_document_category = 'F'
+              i_document_number   = wa_data-ebeln
+              i_document_item     = wa_data-ebelp
+*             I_ALL_ITEMS         =
+*             I_ARCHIVE_HANDLE    =
+            TABLES
+              t_ausg              = t_ausg.
+
+*      LOOP AT t_ausg INTO w_ausg.
+*        IF w_ausg-tcode NE 'ME22N' AND w_ausg-tcode NE 'ME23N'.
+*          DELETE t_ausg.
+*        ENDIF.
+*        CLEAR w_ausg.
+*      ENDLOOP.
+
+          DELETE t_ausg WHERE fname NE 'LOEKZ'.
+          SORT t_ausg BY udate DESCENDING.
+
+          READ TABLE t_ausg INTO w_ausg INDEX 1.
+          IF sy-subrc IS INITIAL.
+            IF sy-uname NE w_ausg-username.
+              MESSAGE e000(zpo) WITH sy-uname.
+            ENDIF.
+          ENDIF.
+
+          CLEAR: wa_ekpo.
+        ENDIF.
+      ENDIF.
+    ENDIF.
+  ENDLOOP.
+******************************************************************
+
+  DATA: it_data TYPE mepoitem.
+
+  DATA: it_ekbe TYPE TABLE OF ekbe.
+  DATA: wa_ekbe LIKE LINE OF it_ekbe.
+
+  DATA: v_menge TYPE ekbe-menge.
+  DATA: wat_ekpo TYPE ekpo.
+
+  ls_mepoheader = im_header->get_data( ).
+
+  IF ls_mepoheader-bsart = 'NBA' OR
+     ls_mepoheader-bsart = 'NB3' OR
+     ls_mepoheader-bsart = 'NB4' OR
+    "Added By On 17.11.2020 12:16:31
+     ls_mepoheader-bsart = 'NBS'..
+    "Ended by RP
+  ELSE.
+    CALL METHOD im_header->get_items
+      RECEIVING
+        re_items = itab.
+
+
+    LOOP AT itab INTO wa.
+      CALL METHOD wa-item->get_data
+        RECEIVING
+          re_data = it_data.
+
+      SELECT SINGLE * FROM ekpo INTO wat_ekpo
+      WHERE ebeln = it_data-ebeln
+        AND ebelp = it_data-ebelp.
+
+      IF sy-subrc IS INITIAL.
+
+*        IF it_data-netwr NE wat_ekpo-netwr.
+        IF it_data-netpr NE wat_ekpo-netpr.
+
+          SELECT * FROM ekbe INTO TABLE  it_ekbe WHERE ebeln = it_data-ebeln
+          AND ebelp = it_data-ebelp
+          AND vgabe  = '1'.
+
+          LOOP AT it_ekbe INTO wa_ekbe.
+
+            IF wa_ekbe-shkzg = 'H'.  " -
+              wa_ekbe-menge =  wa_ekbe-menge * ( -1 ).
+            ENDIF.
+
+*      IF wa_ekbe-shkzg = 'S'.  " +
+*      ENDIF.
+
+            v_menge = v_menge + wa_ekbe-menge.
+
+            CLEAR: wa_ekbe.
+          ENDLOOP.
+
+          IF v_menge GT 0.
+            MESSAGE e001(zpo).
+          ENDIF.
+        ENDIF.
+      ENDIF.
+      CLEAR : wa,it_data,it_ekbe, v_menge, wat_ekpo.
+    ENDLOOP.
+  ENDIF.
+******************************************************************
+*--  2013003800 JOB Incentive Condition 011113
+  DATA : it_cond  TYPE mmpur_tkomv,
+         it_cond1 TYPE mmpur_tkomv,
+         wa_cond  LIKE LINE OF it_cond.
+
+*  if sy-uname <> 'PMG-ABAP01'.
+
+  DATA wzjob TYPE zjob.
+
+*  if sy-subrc ne  0.
+  IF ls_mepoheader-bsart = 'NB3' OR
+    ls_mepoheader-bsart = 'NB4' OR
+    ls_mepoheader-bsart = 'NBA'.
+    CALL METHOD im_header->get_items
+      RECEIVING
+        re_items = itab.
+    LOOP AT itab INTO wa.
+      CALL METHOD wa-item->get_data
+        RECEIVING
+          re_data = it_data.
+      CALL METHOD wa-item->get_conditions
+        IMPORTING
+          ex_conditions = it_cond.
+      READ TABLE it_cond INTO wa_cond WITH KEY kschl = 'ZPIC'.
+      IF sy-subrc EQ 0.
+        SELECT SINGLE * FROM zjob INTO wzjob WHERE
+          usrid = sy-uname.
+        IF sy-subrc NE  0.
+          DATA wkonv TYPE konv.
+          SELECT SINGLE *
+*            FROM konv
+            FROM v_konv_cds    "added by tcs on 29.03.2019
+            INTO wkonv
+            WHERE knumv = wa_cond-knumv
+            AND kposn = wa_cond-kposn AND kschl = 'ZPIC'.
+          IF sy-subrc EQ 0.
+
+            IF wa_cond-kbetr <> wkonv-kbetr.
+              MESSAGE e007(zpo) WITH ls_mepoheader-bsart .
+*            else.
+            ENDIF.
+          ELSE.
+            MESSAGE e007(zpo) WITH ls_mepoheader-bsart .
+          ENDIF.
+        ENDIF.
+      ENDIF.
+    ENDLOOP.
+  ENDIF.
+
+  TYPES:BEGIN OF t_ekkn,
+          psp_pnr    TYPE prps-posid,
+          ps_psp_pnr TYPE prps-pspnr,
+          ebeln      TYPE ekkn-ebeln,
+          ebelp      TYPE ekkn-ebelp,
+          zekkn      TYPE ekkn-zekkn,
+          sakto      TYPE ekkn-sakto,
+        END OF   t_ekkn.
+
+  DATA:i_ekkn     TYPE TABLE OF t_ekkn,
+       w_ekkn     TYPE t_ekkn,
+       v_objnr    TYPE prps-objnr,
+       v_objnr1   TYPE prps-objnr,
+       v_wlp00    TYPE rpsco-wlp00,
+       v_kwert    TYPE konv-kwert,
+       v_post1    TYPE prps-post1,
+       v_post     TYPE prps-post1,
+       v_psp_pnr  TYPE prps-posid,
+       v_psp_pnr1 TYPE prps-posid,
+       str        TYPE string,
+       str1       TYPE string,
+       desr       TYPE string,
+       v_sysubrc  TYPE sy-subrc,
+       flag.
+  DATA : v_psp_pnr4 TYPE prps-posid.
+  IMPORT i_ekkn TO i_ekkn FROM MEMORY ID 'ZACC'.
+
+  CALL METHOD im_header->get_items
+    RECEIVING
+      re_items = itab.
+  LOOP AT itab INTO wa.
+    CALL METHOD wa-item->get_conditions
+      IMPORTING
+        ex_conditions = it_cond.
+    LOOP AT it_cond INTO wa_cond WHERE kschl = 'ZB30'
+                                    OR kschl = 'NAVS'.
+      IF sy-subrc IS INITIAL.
+        APPEND wa_cond TO it_cond1.
+      ENDIF.
+      CLEAR wa_cond.
+    ENDLOOP.
+  ENDLOOP.
+
+  DATA:v_ebelp TYPE ekkn-ebelp.
+  CLEAR:wat_ekpo.
+  LOOP AT i_ekkn INTO w_ekkn.
+    SELECT SINGLE * FROM ekpo INTO wat_ekpo
+      WHERE ebeln = w_ekkn-ebeln AND ebelp = w_ekkn-ebelp
+      AND  loekz <> ''.
+    IF sy-subrc EQ 0.
+      DELETE i_ekkn WHERE ebeln = w_ekkn-ebeln AND ebelp = w_ekkn-ebelp.
+    ENDIF.
+    CLEAR : w_ekkn,wat_ekpo.
+  ENDLOOP.
+  SORT i_ekkn BY psp_pnr.
+
+  DATA : v_knttp TYPE ekpo-knttp.
+
+
+*Get the WBS Elements list
+  DATA : BEGIN OF w_wbs ,
+           ps_pnr  TYPE prps-posid,
+           psp_pnr TYPE prps-posid,
+           objnr   TYPE prps-objnr,
+           bval    TYPE bpge-wtges,
+           aval    TYPE bpge-wtges,
+           nval    TYPE bpge-wtges,
+         END OF w_wbs,
+
+         BEGIN OF w_bav,
+           objnr TYPE bpge-objnr,
+           wtges TYPE bpge-wtges,
+         END OF w_bav,
+
+         BEGIN OF w_eban,
+           banfn TYPE eban-banfn,
+           bnfpo TYPE eban-bnfpo,
+           menge TYPE eban-menge,
+           meins TYPE eban-meins,
+           preis TYPE eban-preis,
+           peinh TYPE eban-peinh,
+           netwr TYPE ekpo-netwr,
+         END OF w_eban,
+
+         BEGIN OF w_log,
+           ebelp   TYPE ekpo-ebelp,
+           kwert   TYPE konv-kwert,
+           psp_pnr TYPE prps-posid,
+           objnr   TYPE prps-objnr,
+           bval    TYPE char15,
+         END OF w_log.
+
+
+  DATA : i_wbs  LIKE TABLE OF w_wbs,
+         i_bv   LIKE TABLE OF w_bav,
+         i_av   LIKE TABLE OF w_bav,
+         i_eban LIKE TABLE OF w_eban,
+         i_log  LIKE TABLE OF w_log.
+
+  DATA : v_index TYPE i.
+
+  LOOP AT i_ekkn INTO w_ekkn.
+    IF w_ekkn-psp_pnr IS NOT INITIAL.
+      CALL FUNCTION 'CONVERSION_EXIT_ABPSN_OUTPUT'
+        EXPORTING
+          input  = w_ekkn-psp_pnr
+        IMPORTING
+          output = w_wbs-psp_pnr.
+      MOVE : w_ekkn-psp_pnr TO w_wbs-ps_pnr.
+      CONCATENATE 'PR' w_ekkn-ps_psp_pnr INTO w_wbs-objnr.
+      APPEND w_wbs TO i_wbs.
+      CLEAR : w_wbs.
+    ENDIF.
+  ENDLOOP.
+  SORT i_wbs BY ps_pnr .
+  DELETE ADJACENT DUPLICATES FROM i_wbs COMPARING ps_pnr.
+* Get the Budget value and assigned value for the selected wbs element.
+* Get the budget value
+  IF NOT i_wbs[] IS INITIAL.
+
+    SELECT objnr wlp00
+           INTO TABLE i_bv
+           FROM rpsco
+           FOR ALL ENTRIES IN i_wbs
+    WHERE objnr EQ i_wbs-objnr
+      AND wrttp EQ '45'.
+
+* Get the assigned value
+    SELECT objnr wtges
+       INTO TABLE i_av
+       FROM  bpge
+       FOR ALL ENTRIES IN i_wbs
+    WHERE objnr EQ i_wbs-objnr
+      AND  wrttp EQ '42'.
+
+    LOOP AT i_wbs INTO w_wbs.
+      v_index = sy-tabix.
+      READ TABLE i_bv INTO w_bav WITH KEY objnr = w_wbs-objnr.
+      IF sy-subrc EQ 0.
+        MOVE : w_bav-wtges TO w_wbs-bval .
+      ENDIF.
+
+      READ TABLE i_av INTO w_bav WITH KEY objnr = w_wbs-objnr.
+      IF sy-subrc EQ 0.
+        MOVE : w_bav-wtges TO w_wbs-aval .
+      ENDIF.
+      w_wbs-nval = w_wbs-bval - w_wbs-aval.
+      MODIFY i_wbs FROM w_wbs INDEX v_index TRANSPORTING bval aval nval.
+      CLEAR : w_wbs, v_index.
+    ENDLOOP.
+  ENDIF.
+
+* Get the Purchar Req details and corresponding PO details
+  it_details1[] = it_details[].
+  DELETE it_details1 WHERE banfn EQ space.
+
+  IF NOT it_details1[] IS INITIAL.
+    SELECT banfn
+           bnfpo
+           menge
+           meins
+           preis
+           peinh
+      FROM eban
+      INTO TABLE i_eban
+      FOR ALL ENTRIES IN it_details
+    WHERE banfn = it_details-banfn
+      AND bnfpo = it_details-bnfpo.
+
+  ENDIF.
+
+* Process PO Accounting data
+  SORT i_ekkn BY psp_pnr.
+  LOOP AT i_ekkn INTO w_ekkn.
+    READ TABLE i_wbs INTO w_wbs WITH KEY ps_pnr = w_ekkn-psp_pnr.
+    IF sy-subrc EQ 0.
+      v_index = sy-tabix.
+    ENDIF.
+* Read the purchase order item details
+    READ TABLE it_details INTO wa_details WITH KEY ebelp = w_ekkn-ebelp.
+    IF sy-subrc EQ 0.
+      IF wa_details-knttp EQ 'Q' OR wa_details-knttp EQ 'P'.
+* Check item is created with reference to PR or Not
+        IF wa_details-banfn NE space.
+* Read table PR Item value
+          READ TABLE i_eban INTO w_eban WITH KEY banfn = wa_details-banfn
+                                                 bnfpo = wa_details-bnfpo.
+          IF sy-subrc EQ 0.
+            w_eban-netwr = wa_details-menge * w_eban-preis.
+          ENDIF.
+
+          LOOP AT it_cond1 INTO wa_cond WHERE kposn = w_ekkn-ebelp.
+            v_kwert = v_kwert + wa_cond-kwert.
+            CLEAR:wa_cond.
+          ENDLOOP.
+* Calculate the net amount
+          IF v_kwert GT w_eban-netwr.
+            v_kwert = v_kwert - w_eban-netwr.
+            IF v_kwert GT w_wbs-nval.
+              w_log-ebelp   = w_ekkn-ebelp.
+              w_log-kwert   = v_kwert - w_wbs-nval.
+              w_log-psp_pnr = w_wbs-psp_pnr.
+              w_log-objnr   = w_wbs-objnr.
+              w_log-bval    = w_wbs-bval.
+              APPEND w_log TO i_log.
+              CLEAR : w_wbs-nval, v_kwert, w_log .
+              MODIFY i_wbs FROM w_wbs TRANSPORTING nval WHERE ps_pnr = w_ekkn-psp_pnr.
+              CLEAR : v_kwert, w_wbs.
+            ELSE.
+              w_wbs-nval = w_wbs-nval - v_kwert.
+              MODIFY i_wbs FROM w_wbs TRANSPORTING nval WHERE ps_pnr = w_ekkn-psp_pnr.
+              CLEAR : w_wbs, v_kwert.
+            ENDIF.
+          ENDIF.
+        ELSE. "
+* Get the value of the Item
+          LOOP AT it_cond1 INTO wa_cond WHERE kposn = w_ekkn-ebelp.
+            v_kwert = v_kwert + wa_cond-kwert.
+            CLEAR:wa_cond.
+          ENDLOOP.
+* Check PO item value is greater than Net available value of the WBS elemnt
+          IF v_kwert GT w_wbs-nval.
+            w_log-ebelp   = w_ekkn-ebelp.
+            w_log-kwert   = v_kwert - w_wbs-nval.
+            w_log-psp_pnr = w_wbs-psp_pnr.
+            w_log-objnr   = w_wbs-objnr.
+            w_log-bval    = w_wbs-bval.
+            APPEND w_log TO i_log.
+            CLEAR : w_wbs-nval, v_kwert, w_log .
+            MODIFY i_wbs FROM w_wbs TRANSPORTING nval WHERE ps_pnr = w_ekkn-psp_pnr.
+            CLEAR : v_kwert, w_wbs.
+          ELSE.
+            w_wbs-nval = w_wbs-nval - v_kwert.
+            MODIFY i_wbs FROM w_wbs TRANSPORTING nval WHERE ps_pnr = w_ekkn-psp_pnr.
+            CLEAR : v_kwert, w_wbs.
+          ENDIF.
+        ENDIF.
+      ENDIF.
+    ENDIF.
+  ENDLOOP.
+**********Check for STO Inforecord for GST
+**********Requested by Pawan added by Rajiv
+*  IF ls_mepoheader-bsart = 'ZUB1'.
+*    TYPES: BEGIN OF ty_regio,
+*             sortl TYPE sortl,
+*             regio TYPE regio,
+*           END OF ty_regio,
+*
+*           BEGIN OF ty_werks,
+*             sortl TYPE sortl,
+*           END OF ty_werks.
+*
+*    DATA: lt_regio  TYPE STANDARD TABLE OF ty_regio,
+*          ls_regio  TYPE ty_regio,
+*          lt_werks  TYPE STANDARD TABLE OF ty_werks,
+*          ls_werks  TYPE ty_werks,
+*          lv_sregio TYPE regio,
+*          lv_dummy  TYPE c LENGTH 128.
+*
+*    LOOP AT it_details INTO wa_details.
+*      ls_werks-sortl = wa_details-werks.
+*      APPEND ls_werks TO lt_werks.
+*      CLEAR:ls_werks,wa_details.
+*    ENDLOOP.
+*    IF lt_werks IS NOT INITIAL.
+*      SELECT SINGLE regio INTO lv_sregio
+*        FROM lfa1
+*        WHERE werks = ls_mepoheader-reswk.
+*      IF sy-subrc = 0 AND lv_sregio IS NOT INITIAL.
+*        SELECT sortl regio FROM kna1 INTO TABLE lt_regio
+*        FOR ALL ENTRIES IN lt_werks
+*          WHERE sortl  = lt_werks-sortl.
+*        IF sy-subrc = 0.
+*          SORT lt_regio BY sortl regio.
+*          LOOP AT it_details INTO wa_details.
+*            READ TABLE lt_regio TRANSPORTING NO FIELDS
+*            WITH KEY sortl = wa_details-werks
+*            regio = lv_sregio BINARY SEARCH.
+*            IF sy-subrc <> 0 AND wa_details-infnr IS INITIAL.
+*              MESSAGE e001(00) WITH 'Inforecord is required for line - ' wa_details-ebelp..
+*              ch_failed = abap_true.
+*              EXIT.
+*            ELSEIF sy-subrc = 0 AND wa_details-infnr IS NOT INITIAL.
+*              MESSAGE e001(00) WITH 'Inforecord is not required for line - ' wa_details-ebelp..
+*              ch_failed = abap_true.
+*              EXIT.
+*            ENDIF.
+*          ENDLOOP.
+*        ENDIF.
+*      ENDIF.
+*    ENDIF.
+*  ENDIF.
+********** End of Check for STO Inforecord for GST
+
+  DATA : v_val(15) TYPE c.
+  "Variables
+  DATA :
+    g_sent_to_all TYPE sonv-flag,
+    g_tab_lines   TYPE i.
+  "Types
+  TYPES:
+    t_document_data TYPE  sodocchgi1,
+    t_packing_list  TYPE  sopcklsti1,
+    t_attachment    TYPE  solisti1,
+    t_body_msg      TYPE  solisti1,
+    t_receivers     TYPE  somlreci1.
+  "Workareas
+  DATA :
+    w_document_data TYPE  t_document_data,
+    w_packing_list  TYPE  t_packing_list,
+    w_attachment    TYPE  t_attachment,
+    w_body_msg      TYPE  t_body_msg,
+    w_receivers     TYPE  t_receivers.
+  "Internal Tables
+  DATA :
+    i_document_data TYPE STANDARD TABLE OF t_document_data,
+    i_packing_list  TYPE STANDARD TABLE OF t_packing_list,
+    i_attachment    TYPE STANDARD TABLE OF t_attachment,
+    i_body_msg      TYPE STANDARD TABLE OF t_body_msg,
+    i_receivers     TYPE STANDARD TABLE OF t_receivers,
+    i_usr21         TYPE STANDARD TABLE OF usr21,
+    w_usr21         TYPE usr21,
+    i_adr6          TYPE STANDARD TABLE OF adr6,
+    w_adr6          TYPE adr6.
+
+
+
+
+  LOOP AT i_log INTO w_log.
+    SELECT SINGLE psphi post1
+      INTO (v_objnr , v_post1)
+      FROM prps
+    WHERE objnr = w_log-objnr.
+    MOVE : w_log-kwert TO v_val.
+    CONDENSE : v_val, w_log-bval.
+
+    CONCATENATE 'PD' v_objnr INTO v_objnr.
+    SELECT SINGLE post1
+    INTO v_post
+    FROM proj
+    WHERE objnr = v_objnr.
+
+    CONCATENATE 'Please note that Budget for WBS No..' w_log-psp_pnr '-'
+    v_post1 'has been exceeded by amount INR' v_val
+    'against released budget of' w_log-bval 'INR'
+    INTO str SEPARATED BY space.
+    CLEAR:w_document_data.
+    REFRESH:i_packing_list,i_receivers.
+
+    CONCATENATE w_log-psp_pnr+0(9) v_post '(Budget Alert)' INTO desr
+    SEPARATED BY space.
+
+    w_document_data-obj_name  = 'MAIL_TO_HEAD'.
+    w_document_data-obj_descr = desr.
+
+    w_body_msg = str.
+    APPEND w_body_msg TO i_body_msg.
+    CLEAR  w_body_msg.
+
+* Blank Line
+    APPEND w_body_msg TO i_body_msg.
+    CLEAR  w_body_msg.
+
+* Blank Line
+    APPEND w_body_msg TO i_body_msg.
+    CLEAR  w_body_msg.
+
+* Blank Line
+    APPEND w_body_msg TO i_body_msg.
+    CLEAR  w_body_msg.
+
+* Note
+    w_body_msg = 'Note – Automatic Budget Alert from system.'.
+    APPEND w_body_msg TO i_body_msg.
+    CLEAR  w_body_msg.
+
+    DESCRIBE TABLE i_body_msg LINES g_tab_lines.
+    w_packing_list-head_start = 1.
+    w_packing_list-head_num   = 0.
+    w_packing_list-body_start = 1.
+    w_packing_list-body_num   = g_tab_lines.
+    w_packing_list-doc_type   = 'RAW'.
+    APPEND w_packing_list TO i_packing_list.
+    CLEAR  w_packing_list.
+
+    READ TABLE i_body_msg INTO w_body_msg INDEX g_tab_lines.
+    w_document_data-doc_size = ( g_tab_lines - 1 ) * 255 + strlen( w_body_msg ).
+
+    SELECT * FROM usr21
+            INTO TABLE i_usr21
+            WHERE bname = sy-uname.
+    IF  i_usr21[] IS NOT INITIAL.
+      SELECT * FROM adr6
+             INTO TABLE i_adr6
+             FOR ALL ENTRIES IN i_usr21
+             WHERE addrnumber = i_usr21-addrnumber
+             AND   persnumber = i_usr21-persnumber
+             AND   flgdefault = 'X'.
+    ENDIF.
+    IF  i_adr6[] IS NOT INITIAL.
+      LOOP AT i_adr6 INTO w_adr6.
+* To Mail ID
+        w_receivers-rec_type   = 'U'.     "Internet address
+        w_receivers-receiver   =  w_adr6-smtp_addr.
+        w_receivers-com_type   = 'INT'.
+        w_receivers-notif_del  = 'X'.
+        w_receivers-notif_ndel = 'X'.
+        APPEND w_receivers TO i_receivers .
+        CLEAR:w_receivers,w_adr6.
+      ENDLOOP.
+    ENDIF.
+* CC Mail ID
+    w_receivers-rec_type   = 'U'.     "Internet address
+    w_receivers-receiver   = 'amitahiniya@ghcl.co.in'.
+    w_receivers-com_type   = 'INT'.
+    w_receivers-notif_del  = 'X'.
+    w_receivers-notif_ndel = 'X'.
+    w_receivers-copy       = 'X'.
+    APPEND w_receivers TO i_receivers .
+    CLEAR:w_receivers.
+
+*&Begin of Insert GSDK916496 Solman#8000001161
+* CC Mail ID
+*    w_receivers-rec_type   = 'U'.     "Internet address
+*    w_receivers-receiver   = 'rajeshsoni@ghcl.co.in'.
+*    w_receivers-com_type   = 'INT'.
+*    w_receivers-notif_del  = 'X'.
+*    w_receivers-notif_ndel = 'X'.
+*    w_receivers-copy       = 'X'.
+*    APPEND w_receivers TO i_receivers .
+*    CLEAR:w_receivers.
+*&End of Insert GSDK916496 Solman#8000001161
+* CC Mail ID
+    w_receivers-rec_type   = 'U'.     "Internet address
+    w_receivers-receiver   = 'ps.sa.reports@ghcl.co.in'.
+    w_receivers-com_type   = 'INT'.
+    w_receivers-notif_del  = 'X'.
+    w_receivers-notif_ndel = 'X'.
+    w_receivers-copy       = 'X'.
+    APPEND w_receivers TO i_receivers .
+    CLEAR:w_receivers.
+    CLEAR:w_log.
+  ENDLOOP.
+
+  IF NOT i_log[] IS INITIAL.
+    CALL FUNCTION 'SO_NEW_DOCUMENT_ATT_SEND_API1'
+      EXPORTING
+        document_data              = w_document_data
+        put_in_outbox              = 'X'
+        commit_work                = 'X'
+      TABLES
+        packing_list               = i_packing_list
+        contents_txt               = i_body_msg
+        receivers                  = i_receivers
+      EXCEPTIONS
+        too_many_receivers         = 1
+        document_not_sent          = 2
+        document_type_not_exist    = 3
+        operation_no_authorization = 4
+        parameter_error            = 5
+        x_error                    = 6
+        enqueue_error              = 7
+        OTHERS                     = 8.
+    IF sy-subrc EQ 0.
+      SUBMIT rsconn01 WITH mode = 'INT' AND RETURN.
+    ENDIF.
+  ENDIF.
+********added by yash reddy*******
+******** Service PO check*********
+*  DATA:wa_esll TYPE esll.
+*  DATA:wa_esll2 TYPE esll.
+*  DATA:wa_esll1 TYPE esll.
+*  DATA:wa_ekpo1 TYPE ekpo.
+*  DATA:lv_ebeln1   TYPE ebeln.
+*  IF sy-tcode = 'ME22N' OR sy-tcode = 'ME23N' .
+*    IMPORT esll TO wa_esll FROM MEMORY ID 'CTAB1'.
+*    IF wa_esll-srvpos IS NOT INITIAL.
+*      CLEAR:lv_ebeln1.
+*      lv_ebeln1 = ls_mepoheader-ebeln.
+*      SELECT SINGLE * FROM ekpo
+*                      INTO wa_ekpo1
+*                      WHERE ebeln = lv_ebeln1.
+*      IF sy-subrc = 0.
+*        SELECT SINGLE * FROM esll
+*                        INTO wa_esll1
+*                        WHERE packno = wa_ekpo1-packno.
+*        IF sy-subrc = 0.
+*          SELECT SINGLE * FROM esll
+*                         INTO wa_esll2
+*                         WHERE packno = wa_esll1-sub_packno.
+*          IF sy-subrc = 0.
+*            IF wa_esll-srvpos NE wa_esll2-srvpos .
+*              MESSAGE 'Overwrite on service code is not allow please us
+*            ELSE.
+*            ENDIF.
+*          ENDIF.
+*        ENDIF.
+*      ENDIF.
+*    ENDIF.
+*  ENDIF.
+*******end of code by reddy*******
+
+********added by yash reddy*******
+******** Service PO check*********
+*  DATA:wa_esll TYPE esll.
+*  DATA:wa_esll2 TYPE esll.
+*  DATA:wa_esll1 TYPE esll.
+*  DATA:wa_ekpo1 TYPE ekpo.
+*  DATA:lv_ebeln1   TYPE ebeln.
+*  IF sy-tcode = 'ME22N' OR sy-tcode = 'ME23N' .
+*    IMPORT esll TO wa_esll FROM MEMORY ID 'CTAB1'.
+*    IF wa_esll-srvpos IS NOT INITIAL.
+*      CLEAR:lv_ebeln1.
+*      lv_ebeln1 = ls_mepoheader-ebeln.
+*      SELECT SINGLE * FROM ekpo
+*                      INTO wa_ekpo1
+*                      WHERE ebeln = lv_ebeln1.
+*      IF sy-subrc = 0.
+*        SELECT SINGLE * FROM esll
+*                        INTO wa_esll1
+*                        WHERE packno = wa_ekpo1-packno.
+*        IF sy-subrc = 0.
+*          SELECT SINGLE * FROM esll
+*                         INTO wa_esll2
+*                         WHERE packno = wa_esll1-sub_packno.
+*          IF sy-subrc = 0.
+*            IF wa_esll-srvpos NE wa_esll2-srvpos .
+*              MESSAGE 'Overwrite on service code is not allow please use another line' TYPE 'E'.
+*            ELSE.
+*            ENDIF.
+*          ENDIF.
+*        ENDIF.
+*      ENDIF.
+*    ENDIF.
+*  ENDIF.
+*******end of code by reddy*******
+
+********added by reddy********
+  IF sy-tcode = 'ME21N' OR sy-tcode EQ 'ME22N' OR sy-tcode EQ 'ME23N'.
+*    DATA :it_item         TYPE purchase_order_items,
+*          wa1_item        LIKE LINE OF it_item,
+*          wa1_data        TYPE mepoitem,
+*          wa1_header_data TYPE mepoheader,
+*          wa1_header      TYPE REF TO if_purchase_order_mm.
+    DATA:it_item         TYPE STANDARD TABLE OF ekpo,
+         wa1_item        TYPE ekpo,
+         wa1_header_data TYPE ekko.
+    DATA:wa_uname TYPE xubname.
+    DATA: wa_esll  TYPE esll,
+          wa1_esll TYPE esll,
+          it_esll  TYPE STANDARD TABLE OF esll,
+          it1_esll TYPE STANDARD TABLE OF esll.
+    DATA:wa_esll123 TYPE esll.
+*    CALL METHOD im_item->get_header
+*      RECEIVING
+*        re_header = wa1_header.
+*
+*    CALL METHOD wa1_header->get_data
+*      RECEIVING
+*        re_data = wa1_header_data.
+*
+*    CALL METHOD wa_header->get_items
+*      RECEIVING
+*        re_items = it_item.
+*    CLEAR:wa_item.
+    IF ls_mepoheader-ebeln IS NOT INITIAL.
+      SELECT * FROM ekpo
+               INTO TABLE it_item
+               WHERE ebeln = ls_mepoheader-ebeln.
+
+      SELECT SINGLE * FROM ekko INTO
+                wa1_header_data
+               WHERE ebeln = ls_mepoheader-ebeln.
+
+      IF wa1_header_data-bedat GE '20181220'.
+        SELECT SINGLE uname FROM zmm_userid_ser
+                            INTO wa_uname
+                            WHERE uname = sy-uname.
+        IF wa_uname IS  INITIAL.
+          IMPORT it_esll TO it_esll FROM MEMORY ID 'CTAB12'.
+          IMPORT wa_esll123 TO wa_esll123 FROM MEMORY ID 'CTAB123'.
+          IF  wa_esll123 IS NOT INITIAL.
+            APPEND wa_esll123 TO it_esll.
+          ENDIF.
+          IF it_esll IS NOT INITIAL.
+            DELETE it_esll WHERE ktext1 IS INITIAL.
+
+            LOOP AT it_esll INTO wa_esll.
+              IF wa_esll-srvpos IS INITIAL.
+                LOOP AT it_item INTO wa1_item.
+*                CALL METHOD wa1_item-item->get_data
+*                  RECEIVING
+*                    re_data = wa1_data.
+
+*                IF wa1_data-pstyp = '9'.
+                  IF wa1_item-pstyp = '9'.
+                    IF wa1_item-matnr IS INITIAL.
+                      IF wa_esll-ktext1 IS NOT INITIAL.
+                        MESSAGE 'You are not authorized to give short text.' TYPE 'E'.
+                      ENDIF.
+                    ENDIF.
+                  ENDIF.
+                  CLEAR:wa1_item.
+                ENDLOOP.
+              ENDIF.
+            ENDLOOP.
+          ELSE.
+            LOOP AT it_item INTO wa1_item.
+*              IF wa1_esll-srvpos IS INITIAL.
+              LOOP AT it_details INTO wa_details WHERE ebelp = wa1_item-ebelp.
+*                CALL METHOD wa1_item-item->get_data
+*                  RECEIVING
+*                    re_data = wa1_data.
+
+*                IF wa1_data-pstyp = '9'.
+                IF wa_details-pstyp = '9'.
+                  IF wa_details-matnr IS INITIAL.
+                    IF wa1_header_data-memory = 'X'.
+                      MESSAGE 'You are not authorized to give short text.' TYPE 'E'.
+                    ELSE.
+                      IF wa1_item-txz01 NE  wa_details-txz01 ."IS NOT INITIAL.
+                        MESSAGE 'You are not authorized to give short text.' TYPE 'E'.
+                      ENDIF.
+                    ENDIF.
+                  ENDIF.
+                ENDIF.
+                CLEAR:wa_details.
+              ENDLOOP.
+*              ENDIF.
+              CLEAR:wa1_item.
+            ENDLOOP.
+          ENDIF.
+        ENDIF.
+      ELSE.
+        FREE MEMORY ID 'CTAB12'.
+      ENDIF.
+    ELSE.
+      IF ls_mepoheader-bedat GE '20181220'.
+        SELECT SINGLE uname FROM zmm_userid_ser
+                            INTO wa_uname
+                            WHERE uname = sy-uname.
+        IF wa_uname IS  INITIAL.
+          IMPORT it_esll TO it_esll FROM MEMORY ID 'CTAB12'.
+          IMPORT wa_esll123 TO wa_esll123 FROM MEMORY ID 'CTAB123'.
+          IF  wa_esll123 IS NOT INITIAL.
+            APPEND wa_esll123 TO it_esll.
+          ENDIF.
+          IF it_esll IS NOT INITIAL.
+            DELETE it_esll WHERE ktext1 IS INITIAL.
+            LOOP AT it_esll INTO wa_esll.
+              IF wa_esll-srvpos IS INITIAL.
+                LOOP AT it_details INTO wa_details.
+*                CALL METHOD wa1_item-item->get_data
+*                  RECEIVING
+*                    re_data = wa1_data.
+
+*                IF wa1_data-pstyp = '9'.
+                  IF wa_details-pstyp = '9'.
+                    IF wa_details-matnr IS INITIAL.
+                      IF wa_esll-ktext1 IS NOT INITIAL.
+                        MESSAGE 'You are not authorized to give short text.' TYPE 'E'.
+                      ENDIF.
+                    ENDIF.
+                  ENDIF.
+                  CLEAR:wa_details.
+                ENDLOOP.
+              ENDIF.
+            ENDLOOP.
+          ELSE.
+            LOOP AT it_item INTO wa1_item.
+*              IF wa1_esll-srvpos IS INITIAL.
+              LOOP AT it_details INTO wa_details WHERE ebelp = wa1_item-ebelp.
+*                CALL METHOD wa1_item-item->get_data
+*                  RECEIVING
+*                    re_data = wa1_data.
+
+*                IF wa1_data-pstyp = '9'.
+                IF wa_details-pstyp = '9'.
+                  IF wa_details-matnr IS INITIAL.
+                    IF wa1_header_data-memory = 'X'.
+                      MESSAGE 'You are not authorized to give short text.' TYPE 'E'.
+                    ELSE.
+                      IF wa1_item-txz01 NE  wa_details-txz01 ."IS NOT INITIAL.
+                        MESSAGE 'You are not authorized to give short text.' TYPE 'E'.
+                      ENDIF.
+                    ENDIF.
+                  ENDIF.
+                ENDIF.
+                CLEAR:wa_details.
+              ENDLOOP.
+*              ENDIF.
+              CLEAR:wa1_item.
+            ENDLOOP.
+          ENDIF.
+        ENDIF.
+      ELSE.
+        FREE MEMORY ID 'CTAB12'.
+        FREE MEMORY ID 'CTAB123'.
+      ENDIF.
+    ENDIF.
+  ENDIF.
+
+*  IF sy-tcode = 'ME21N' OR sy-tcode EQ 'ME22N' OR sy-tcode EQ 'ME23N'.
+*    data:wa_esll123 type esll.
+* IMPORT wa_esll123 TO wa_esll123 FROM MEMORY ID 'CTAB123'.
+*    endif.
+******end of code by reddy
+
+  "SOC Added by _RD/AP 06.08.2020
+  IF ls_mepoheader-bsart EQ 'ZUB1'.
+    LOOP AT itab INTO wa.
+      CALL METHOD wa-item->get_shipping_data
+        RECEIVING
+          re_ekpv = DATA(wa_shipping_data).
+
+      CALL METHOD wa-item->get_data
+        RECEIVING
+          re_data = wa_data.
+
+      SELECT SINGLE * FROM tvro
+        INTO @DATA(wa_tvro)
+        WHERE route = @wa_shipping_data-route.
+
+      IF wa_data-inco1 IS INITIAL.
+        MESSAGE 'Please enter Incoterm' TYPE 'E'.
+      ENDIF.
+
+      CASE wa_tvro-vsart.
+        WHEN '01'.
+          IF wa_data-inco1 NE 'LOR' AND wa_data-inco1 NE 'OWN'.
+            MESSAGE 'Please select correct Incoterm' TYPE 'E'.
+          ENDIF.
+        WHEN '03'.
+          IF wa_data-inco1 NE 'RAK' AND wa_data-inco1 NE 'CON'.
+            MESSAGE 'Please select correct Incoterm' TYPE 'E'.
+          ENDIF.
+        WHEN '04'.
+          IF wa_data-inco1 NE 'SEA'.
+            MESSAGE 'Please select correct Incoterm' TYPE 'E'.
+          ENDIF.
+        WHEN OTHERS.
+      ENDCASE.
+
+    ENDLOOP.
+  ENDIF.
+  "EOC Added by _RD/AP 06.08.2020
+
+
+  "Added By On 22.09.2020 09:43:12
+*  IF  ls_mepoheader-bedat ge '20200929'.
+*
+*  IF sy-tcode = 'ME21N' OR sy-tcode = 'ME22N' OR  sy-tcode = 'ME23N'.
+*
+*    DATA : v_zterm TYPE ekko-zterm,
+*           v_name  TYPE ymm_val-name,
+*           v_name1 TYPE ymm_val-name,
+*           v_name2 TYPE ymm_val-name.
+*    SELECT SINGLE name
+*           FROM ymm_val
+*           INTO v_name2
+*           WHERE type = 'USER'
+*           AND  name = sy-uname.
+*    IF  v_name2 IS INITIAL.
+*
+*      SELECT SINGLE zterm
+*             FROM lfm1
+*             INTO v_zterm
+*             WHERE lifnr = ls_mepoheader-lifnr
+*              AND  EKORG = ls_mepoheader-EKORG.
+*      IF  v_zterm NE ls_mepoheader-zterm.
+*        SELECT SINGLE name
+*               FROM ymm_val
+*               INTO v_name
+*               WHERE type = 'PUR ORG'
+*               AND  name = ls_mepoheader-ekorg.
+*        SELECT SINGLE name
+*               FROM ymm_val
+*               INTO v_name1
+*               WHERE type = 'DOC TYPE'
+*               AND  name = ls_mepoheader-bsart.
+*        IF  v_name IS INITIAL .
+*          IF  v_name1 IS INITIAL.
+**            MESSAGE 'Payment Term Not allowed to change' TYPE 'I' DISPLAY LIKE 'E'.
+**            LEAVE TO LIST-PROCESSING.
+**            SET SCREEN SYST-dynnr.
+*            MESSAGE e010(zpo).
+*          ENDIF.
+*        ENDIF.
+*      ENDIF.
+*    ENDIF.
+*
+*  ENDIF.
+*
+*
+*  ENDIF.
+  "Ended by RP
+
+  "Added By On 27.08.2021 09:21:28
+  DATA : v_ktokk TYPE lfa1-ktokk.
+  IF  sy-tcode = 'ME21N'
+   OR sy-tcode = 'ME22N'
+   OR sy-tcode = 'ME23N'
+   OR sy-tcode = 'ME59N'
+   OR sy-tcode = 'ME28' .
+
+    IF  ls_mepoheader-bedat GT '20210821'.
+      SELECT SINGLE ktokk
+               FROM lfa1
+               INTO v_ktokk
+               WHERE lifnr = ls_mepoheader-lifnr
+                 AND ktokk IN ('ZKON','ZDVS','ZDVR')
+                  AND ( brsch = 'SMAL' OR brsch = 'MEDI' ).
+
+      IF  v_ktokk   IS NOT INITIAL  .
+        IF ls_mepoheader-zbd1t NOT BETWEEN 0 AND 45.
+          MESSAGE 'Payment Term not as per MSME Guidelines' TYPE 'E'.
+        ENDIF.
+      ENDIF.
+    ENDIF.
+  ENDIF.
+  "End Of Changes by RP on 27.08.2021 09:27:28
+ENDMETHOD.
