@@ -1,0 +1,260 @@
+PERFORM fill_tab.
+PERFORM create_header.
+PERFORM create_entry_for_data.
+PERFORM create_attachment TABLES htab iheadsh USING 'HEADER'.
+PERFORM create_entry_for_attachment.
+PERFORM create_attachment TABLES dtab iheadsd USING 'DETAIL'.
+*PERFORM GET_DATA.
+PERFORM create_entry_for_attachment.
+PERFORM make_receiptent_list.
+PERFORM send_mail.
+
+*****************
+FORM fill_tab.
+  DO 10 TIMES.
+    htab-line = sy-index.
+    SHIFT htab-line LEFT DELETING LEADING space.
+    APPEND htab.
+  ENDDO.
+  DO 5 TIMES.
+    dtab-line = sy-index.
+    SHIFT dtab-line LEFT DELETING LEADING space.
+    APPEND dtab.
+  ENDDO.
+  wa_heads-col_no = 1.
+  wa_heads-col_name = 'Title Header'.
+  APPEND wa_heads TO iheadsh.
+  wa_heads-col_no = 1.
+  wa_heads-col_name = 'Title Detail'.
+  APPEND wa_heads TO iheadsd.
+
+  wbody_st = 1.
+ENDFORM.                    " FILL_TAB
+
+*********************
+FORM create_header.
+* Creation of the document to be sent
+  doc_chng-obj_name = 'ANGEBOT'.
+  doc_chng-obj_descr = 'PO Mails'.
+  APPEND objtxt.
+  objtxt =
+  'An PO '.
+  APPEND objtxt.
+  objtxt = 'has been included as attachment.'.
+  APPEND objtxt.
+  DESCRIBE TABLE objtxt LINES tab_lines.
+  READ TABLE objtxt INDEX tab_lines.
+  doc_chng-doc_size = ( tab_lines - 1 ) * 255 + STRLEN( objtxt ).
+
+ENDFORM.                    " CREATE_HEADER
+
+************************
+FORM create_entry_for_data.
+* Creation of the entry for the compressed document
+  CLEAR objpack-transf_bin.
+  objpack-head_start = 1.
+  objpack-head_num = 0.
+  objpack-body_start = 1.
+  objpack-body_num = tab_lines.
+  objpack-doc_type = 'RAW'.
+  APPEND objpack.
+
+ENDFORM.                    " CREATE_ENTRY_FOR_DATA
+
+
+*************************
+FORM create_attachment TABLES ptab STRUCTURE htab
+                              pheads STRUCTURE wa_heads
+                       USING  pheader.
+  DATA : tab TYPE TABLE OF rcglsvfile .
+  DATA : wa_tab LIKE rcglsvfile.
+  DATA : counter TYPE i.
+  DATA : BEGIN OF wa_data ,
+            word(20),
+         END OF wa_data.
+  DATA : idata LIKE wa_data OCCURS 0 WITH HEADER LINE.
+
+  REFRESH: objbin1.
+
+  LOOP AT pheads .
+    IF sy-tabix NE 1.
+      CONCATENATE   w_text pheads-col_name  INTO w_text SEPARATED BY '~'.
+    ELSE.
+      w_text = pheads-col_name.
+    ENDIF.
+  ENDLOOP.
+  PERFORM split_data.
+
+  CALL FUNCTION 'Z_SAP_CONVERT_TO_TEX_FORMAT'
+     EXPORTING
+          i_field_seperator    = '~'
+*         I_LINE_HEADER        =
+*         I_FILENAME           =
+*         I_APPL_KEEP          = ' '
+     TABLES
+          i_tab_sap_data       = ptab
+          i_tab_converted_data = tab
+    EXCEPTIONS
+         conversion_failed    = 1
+         OTHERS               = 2
+          .
+  IF sy-subrc <> 0.
+* MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+*         WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+  ENDIF.
+  LOOP AT tab INTO wa_tab.
+    CONCATENATE  wa_tab cr_mark INTO objbin1 .
+    APPEND objbin1.
+  ENDLOOP.
+  DESCRIBE TABLE objbin1 LINES tab_lines.
+  objhead = pheader.
+  APPEND objhead.
+
+  APPEND LINES OF objbin1 TO objbin.
+
+ENDFORM.                    " CREATE_ATTACHMENT
+
+
+*********************
+FORM create_entry_for_attachment.
+* Creation of the entry for the compressed attachment
+  objpack-transf_bin = 'X'.
+  objpack-head_start = whead_st.
+  objpack-head_num = 1.
+  objpack-body_start = wbody_st.
+  objpack-body_num = tab_lines.
+  objpack-doc_type = 'BIN'.
+  objpack-obj_name = 'ANLAGE'.
+  objpack-obj_descr = 'Representation of object 138'.
+  objpack-doc_size = tab_lines * 255.
+  APPEND objpack.
+
+  DESCRIBE TABLE objbin LINES tab_lines.
+  wbody_st = tab_lines + 1.
+  whead_st = whead_st + 1.
+ENDFORM.                    " CREATE_ENTRY_FOR_ATTACHMENT
+
+*****************
+FORM create_attachment TABLES ptab STRUCTURE htab
+                              pheads STRUCTURE wa_heads
+                       USING  pheader.
+  DATA : tab TYPE TABLE OF rcglsvfile .
+  DATA : wa_tab LIKE rcglsvfile.
+  DATA : counter TYPE i.
+  DATA : BEGIN OF wa_data ,
+            word(20),
+         END OF wa_data.
+  DATA : idata LIKE wa_data OCCURS 0 WITH HEADER LINE.
+
+  REFRESH: objbin1.
+
+  LOOP AT pheads .
+    IF sy-tabix NE 1.
+      CONCATENATE   w_text pheads-col_name  INTO w_text SEPARATED BY '~'.
+    ELSE.
+      w_text = pheads-col_name.
+    ENDIF.
+  ENDLOOP.
+  PERFORM split_data.
+
+  CALL FUNCTION 'Z_SAP_CONVERT_TO_TEX_FORMAT'
+     EXPORTING
+          i_field_seperator    = '~'
+*         I_LINE_HEADER        =
+*         I_FILENAME           =
+*         I_APPL_KEEP          = ' '
+     TABLES
+          i_tab_sap_data       = ptab
+          i_tab_converted_data = tab
+    EXCEPTIONS
+         conversion_failed    = 1
+         OTHERS               = 2
+          .
+  IF sy-subrc <> 0.
+* MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+*         WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+  ENDIF.
+  LOOP AT tab INTO wa_tab.
+    CONCATENATE  wa_tab cr_mark INTO objbin1 .
+    APPEND objbin1.
+  ENDLOOP.
+  DESCRIBE TABLE objbin1 LINES tab_lines.
+  objhead = pheader.
+  APPEND objhead.
+
+  APPEND LINES OF objbin1 TO objbin.
+
+ENDFORM.                    " CREATE_ATTACHMENT
+
+***********************
+FORM create_entry_for_attachment.
+* Creation of the entry for the compressed attachment
+  objpack-transf_bin = 'X'.
+  objpack-head_start = whead_st.
+  objpack-head_num = 1.
+  objpack-body_start = wbody_st.
+  objpack-body_num = tab_lines.
+  objpack-doc_type = 'BIN'.
+  objpack-obj_name = 'ANLAGE'.
+  objpack-obj_descr = 'Representation of object 138'.
+  objpack-doc_size = tab_lines * 255.
+  APPEND objpack.
+
+  DESCRIBE TABLE objbin LINES tab_lines.
+  wbody_st = tab_lines + 1.
+  whead_st = whead_st + 1.
+ENDFORM.                    " CREATE_ENTRY_FOR_ATTACHMENT
+
+
+***********************
+FORM make_receiptent_list.
+  reclist-receiver =  sy-uname. 
+  reclist-rec_type = 'B'. "'U'.
+  APPEND reclist.
+
+ENDFORM.                    " MAKE_RECEIPTENT_LIST
+
+*********************
+FORM send_mail.
+  break dinark.
+  CALL FUNCTION 'SO_NEW_DOCUMENT_ATT_SEND_API1'
+    EXPORTING
+      document_data              = doc_chng
+      put_in_outbox              = 'X'
+    TABLES
+      packing_list               = objpack
+      object_header              = objhead
+      contents_bin               = objbin
+      contents_txt               = objtxt
+      receivers                  = reclist
+    EXCEPTIONS
+      too_many_receivers         = 1
+      document_not_sent          = 2
+      operation_no_authorization = 4
+      OTHERS                     = 99.
+  CASE sy-subrc.
+    WHEN 0.
+      WRITE: / 'Result of the send process:'.
+      LOOP AT reclist.
+        IF reclist-retrn_code = 0.
+          WRITE:/ 'The document was sent to:','dinar.karkhanis@ril.com'.
+        ELSE.
+          WRITE 'The document could not be sent '.
+        ENDIF.
+      ENDLOOP.
+    WHEN 1.
+      WRITE: /
+   'No authorization for sending to the specified number OF RECIPIENTS'.
+    WHEN 2.
+      WRITE: / 'Document could not be sent to any recipient'.
+    WHEN 4.
+      WRITE: / 'No send authorization'.
+    WHEN OTHERS.
+      WRITE: / 'Error occurred while sending'.
+  ENDCASE.
+
+ENDFORM.                    " SEND_MAIL
+
+
+
+
