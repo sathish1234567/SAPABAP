@@ -1,0 +1,471 @@
+*----------------------------------------------------------------------*
+***INCLUDE YMM_REJECT_MAIL_VENDOR_MAILF01.
+*----------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*& Form MAIL_ATACH
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM MAIL_ATACH .
+
+  DATA : V_TXT(50),
+         V_TXT1(50).
+  DATA : IT_EMAIL TYPE TABLE OF YMAIL_ORDER,
+         WA_EMAIL TYPE YMAIL_ORDER.
+  DATA: LT_MAILSUBJECT     TYPE SODOCCHGI1.
+  DATA: LT_MAILRECIPIENTS  TYPE STANDARD TABLE OF SOMLREC90 WITH HEADER
+  LINE.
+  DATA: LT_MAILTXT TYPE STANDARD TABLE OF SOLI      WITH HEADER
+  LINE,
+        IT_MAIL    TYPE TABLE OF TY_FINAL,
+        WA_MAIL    TYPE  TY_FINAL,
+        V_NORMT    TYPE MARA-NORMT,
+        V_QTY      TYPE MKOL-SLABS.
+  DATA: W_DOCDATA TYPE SODOCCHGI1,
+        W_OBJTXT  TYPE SOLISTI1,
+        W_OBJBIN  TYPE SOLISTI1,
+        W_OBJPACK TYPE SOPCKLSTI1,
+        W_RECLIST TYPE SOMLRECI1,
+        W_LINES   TYPE I,
+*       Table declaration
+        T_OBJBIN  TYPE  TABLE OF SOLISTI1,   " Attachment data
+        T_OBJTXT  TYPE  TABLE OF SOLISTI1,   " Message body
+        T_OBJPACK TYPE  TABLE OF SOPCKLSTI1, " Packing list
+        T_RECLIST TYPE  TABLE OF SOMLRECI1,  " Receipient list
+        T_OBJHEAD TYPE  TABLE OF SOLISTI1.   " Header
+  DATA VSTR TYPE STRING.
+  DATA : P_LINK  TYPE SIBFBORIID.
+  DATA : P_OBJTY TYPE SIBFTYPEID.
+
+  W_OBJTXT-LINE = 'Dear Partner,'.
+  APPEND W_OBJTXT TO T_OBJTXT.
+  W_OBJTXT-LINE = '<br>'.
+  APPEND W_OBJTXT TO T_OBJTXT.
+  W_OBJTXT-LINE = '<br>'.
+  APPEND W_OBJTXT TO T_OBJTXT.
+  W_OBJTXT-LINE =
+'Please note that following materials have been rejected during inspe' &
+'ction as per users input mentioned in table under “Reason for Reject' &
+'ion”.'
+  .
+  APPEND W_OBJTXT TO T_OBJTXT.
+  W_OBJTXT-LINE = '<br>'.
+  APPEND W_OBJTXT TO T_OBJTXT.
+  W_OBJTXT-LINE =
+'Kindly complete all formalities and arrange to collect the rejected ' &
+'material from GHCL store and send correct material immediately under' &
+' intimation to concerned buyer and store team.'
+  .
+  APPEND W_OBJTXT TO T_OBJTXT.
+
+  W_OBJTXT-LINE = '<br>'.
+  APPEND W_OBJTXT TO T_OBJTXT.
+  W_OBJTXT-LINE =
+  'You have to complete GST compliances also related to above.'.
+  .
+  APPEND W_OBJTXT TO T_OBJTXT.
+*  w_objtxt-line = '</tbody> </table>'.
+*  APPEND w_objtxt TO t_objtxt.
+*  w_objtxt-line = '<br><br>'.
+*  APPEND w_objtxt TO t_objtxt.
+
+
+  W_OBJTXT-LINE = '<table style="MARGIN: 10px" bordercolor="blue" '.
+  APPEND W_OBJTXT TO T_OBJTXT.
+  W_OBJTXT-LINE = ' cellspacing="0" cellpadding="2" width="700"'.
+  APPEND W_OBJTXT TO T_OBJTXT.
+  W_OBJTXT-LINE = ' border="1"><tbody><tr><font size="2">'.
+  APPEND W_OBJTXT TO T_OBJTXT.
+
+
+
+  W_OBJTXT-LINE = '<th style="background-color:#fffcd1;">Pur. Doc</th>'.
+  APPEND W_OBJTXT TO T_OBJTXT.
+  W_OBJTXT-LINE =   '<th style="background-color:#fffcd1;">Item</th>'.
+  APPEND W_OBJTXT TO T_OBJTXT.
+  W_OBJTXT-LINE = '<th style="background-color:#fffcd1;">GR Doc</th>'.
+  APPEND W_OBJTXT TO T_OBJTXT.
+  W_OBJTXT-LINE =
+  '<th style="background-color:#fffcd1;">GR Doc Date</th>'.
+  APPEND W_OBJTXT TO T_OBJTXT.
+  W_OBJTXT-LINE = '<th style="background-color:#fffcd1;">Insp. Lot</th>'
+  .
+  APPEND W_OBJTXT TO T_OBJTXT.
+  W_OBJTXT-LINE = '<th style="background-color:#fffcd1;">GR Qty</th>'.
+  APPEND W_OBJTXT TO T_OBJTXT.
+  W_OBJTXT-LINE =
+  '<th style="background-color:#fffcd1;">Rejected Qty Alert</th>'.
+  APPEND W_OBJTXT TO T_OBJTXT.
+  W_OBJTXT-LINE =
+  '<th style="background-color:#fffcd1;">Buyer Name</th>'.
+  APPEND W_OBJTXT TO T_OBJTXT.
+  W_OBJTXT-LINE =
+  '<th style="background-color:#fffcd1;">Vendor Code</th>'.
+  APPEND W_OBJTXT TO T_OBJTXT.
+  W_OBJTXT-LINE =
+  '<th style="background-color:#fffcd1;">Vendor Name</th>'.
+  APPEND W_OBJTXT TO T_OBJTXT.
+  "Added By On 25.11.2020 09:00:06
+  W_OBJTXT-LINE =
+  '<th style="background-color:#fffcd1;">Mat. Desc</th>'.
+  APPEND W_OBJTXT TO T_OBJTXT.
+  W_OBJTXT-LINE =
+  '<th style="background-color:#fffcd1;">Reason for rejection</th>'.
+  APPEND W_OBJTXT TO T_OBJTXT.
+
+
+  CLEAR : V_NORMT,WA_BYM.
+
+
+
+  LOOP AT IT_FINAL INTO WA_FINAL WHERE LIFNR = WA_VEND-LIFNR.
+
+    WA_BYM-BYERML = WA_FINAL-BYERML.
+
+    CONCATENATE '<tr style="background-color:#bfbebe;"><td>'
+    WA_FINAL-EBELN '</td>' INTO W_OBJTXT-LINE.
+    APPEND W_OBJTXT TO T_OBJTXT.
+
+    VSTR = WA_FINAL-EBELP.
+    CONCATENATE '<td>' VSTR '</td>' INTO W_OBJTXT-LINE.
+    APPEND W_OBJTXT TO T_OBJTXT.
+    CLEAR VSTR.
+
+    VSTR = WA_FINAL-MBLNR.
+    CONCATENATE '<td>' VSTR '</td>' INTO W_OBJTXT-LINE.
+    APPEND W_OBJTXT TO T_OBJTXT.
+    CLEAR VSTR.
+
+    CONCATENATE WA_FINAL-BLDAT+6(2) '.' WA_FINAL-BLDAT+4(2) '.'
+                WA_FINAL-BLDAT+0(4) INTO VSTR.
+*    vstr = wa_final-bldat.
+    CONCATENATE '<td>' VSTR '</td>' INTO W_OBJTXT-LINE.
+    APPEND W_OBJTXT TO T_OBJTXT.
+    CLEAR VSTR.
+
+    VSTR = WA_FINAL-PRUEFLOS.
+    CONCATENATE '<td>' VSTR '</td>' INTO W_OBJTXT-LINE.
+    APPEND W_OBJTXT TO T_OBJTXT.
+    CLEAR VSTR.
+
+    VSTR = WA_FINAL-LOSMENGE.
+    CONCATENATE '<td>' VSTR '</td>' INTO W_OBJTXT-LINE.
+    APPEND W_OBJTXT TO T_OBJTXT.
+    CLEAR VSTR.
+
+    VSTR = WA_FINAL-LMENGE04.
+    CONCATENATE '<td>' VSTR '</td>' INTO W_OBJTXT-LINE.
+    APPEND W_OBJTXT TO T_OBJTXT.
+    CLEAR VSTR.
+
+    VSTR = WA_FINAL-EKNAM.
+    CONCATENATE '<td>' VSTR '</td>' INTO W_OBJTXT-LINE.
+    APPEND W_OBJTXT TO T_OBJTXT.
+    CLEAR VSTR.
+
+    VSTR = WA_FINAL-LIFNR.
+    CONCATENATE '<td>' VSTR '</td>' INTO W_OBJTXT-LINE.
+    APPEND W_OBJTXT TO T_OBJTXT.
+    CLEAR VSTR.
+
+    VSTR = WA_FINAL-NAME1.
+    CONCATENATE '<td>' VSTR '</td>' INTO W_OBJTXT-LINE.
+    APPEND W_OBJTXT TO T_OBJTXT.
+    CLEAR VSTR.
+
+    "Added By On 25.11.2020 09:01:17
+    VSTR = WA_FINAL-KTEXTMAT.
+    CONCATENATE '<td>' VSTR '</td>' INTO W_OBJTXT-LINE.
+    APPEND W_OBJTXT TO T_OBJTXT.
+    CLEAR VSTR.
+
+    VSTR = WA_FINAL-SGTXT.
+    CONCATENATE '<td>' VSTR '</td>' INTO W_OBJTXT-LINE.
+    APPEND W_OBJTXT TO T_OBJTXT.
+    CLEAR VSTR.
+    "Ended by RP
+    APPEND WA_BYM TO IT_BYM.
+    CLEAR : WA_BYM.
+  ENDLOOP.
+
+  W_OBJTXT-LINE = '</tbody> </table>'.
+  APPEND W_OBJTXT TO T_OBJTXT.
+**********************************
+  W_OBJTXT-LINE = '<br><br>'.
+  APPEND W_OBJTXT TO T_OBJTXT.
+
+
+  W_OBJTXT-LINE = '<p>Thank You,</p>'.
+
+  APPEND W_OBJTXT TO T_OBJTXT.
+  W_OBJTXT-LINE =
+'<p><font size="2"> NOTE : THIS IS SYSTEM GENERATED EMAIL,PLEASE DO N' &
+'OT REPLY TO THIS EMAIL ID </font></p>'
+.
+  APPEND W_OBJTXT TO T_OBJTXT.
+
+*  W_OBJPACK-OBJ_DESCR = 'Rejection Alert to Vendor'.
+*  APPEND W_OBJTXT TO T_OBJTXT.
+  "Class data declaration
+  DATA: GO_SEND_REQUEST  TYPE REF TO CL_BCS,
+        GO_DOCUMENT      TYPE REF TO CL_DOCUMENT_BCS,
+        LO_SENDER        TYPE REF TO CL_SAPUSER_BCS,
+        LO_SENDERINT     TYPE REF TO CL_CAM_ADDRESS_BCS,
+        LO_RECIPIENT     TYPE REF TO IF_RECIPIENT_BCS,
+        LO_BCS_EXCEPTION TYPE REF TO CX_BCS,
+        GV_SUB           TYPE STRING,
+        LV_SENT_TO_ALL   TYPE OS_BOOLEAN.
+
+  GO_SEND_REQUEST = CL_BCS=>CREATE_PERSISTENT( ).
+  GO_DOCUMENT = CL_DOCUMENT_BCS=>CREATE_DOCUMENT(
+  I_TYPE = 'HTM'
+  I_TEXT = T_OBJTXT
+* i_length = '12'
+  I_SUBJECT = 'Rejection Alert to Vendor' ).
+
+
+*  GV_SUB = 'Rejection Alert to Vendor'.
+*  CALL METHOD GO_SEND_REQUEST->SET_MESSAGE_SUBJECT
+*    EXPORTING
+*      IP_SUBJECT = GV_SUB.
+*  DESCRIBE TABLE T_OBJTXT      LINES W_LINES.
+*  READ     TABLE T_OBJTXT      INTO W_OBJTXT INDEX W_LINES.
+*  W_DOCDATA-DOC_SIZE =
+*      ( W_LINES - 1 ) * 255 + STRLEN( W_OBJTXT ).
+*  W_DOCDATA-OBJ_DESCR = 'Rejection Alert to Vendor'.
+*
+*
+*  " create entry data
+**   * PACKING DATA
+*  CLEAR W_OBJPACK-TRANSF_BIN.
+*  W_OBJPACK-HEAD_START = 1.
+*  W_OBJPACK-HEAD_NUM   = 0.
+*  W_OBJPACK-BODY_START = 1.
+*  W_OBJPACK-BODY_NUM   = W_LINES.
+*  W_OBJPACK-DOC_TYPE   = 'RAW'.
+*  APPEND W_OBJPACK TO T_OBJPACK.
+
+
+  LOOP AT IT_FINAL INTO WA_FINAL WHERE LIFNR = WA_VEND-LIFNR.
+    " create attachment
+
+    P_LINK = WA_FINAL-PRUEFLOS.
+    P_OBJTY = 'BUS2045'.
+    SELECT SINGLE * FROM SRGBTBREL
+         INTO @DATA(LS_SRGBTBREL)
+         WHERE INSTID_A = @P_LINK AND
+               TYPEID_A = @P_OBJTY.
+    IF SY-SUBRC NE 0.
+      CONTINUE.
+    ENDIF.
+
+    DATA : WA_OBJECT       TYPE SIBFLPORB,
+           INT_REL_OPTIONS TYPE OBL_T_RELT,
+           WA_REL_OPTIONS  TYPE OBL_S_RELT,
+           INT_LINKS       TYPE OBL_T_LINK,
+           WA_LINKS        TYPE OBL_S_LINK.
+
+    WA_REL_OPTIONS-LOW = 'ATTA'. "" Attachemnts
+    WA_REL_OPTIONS-SIGN = 'I'.
+    WA_REL_OPTIONS-OPTION = 'EQ'.
+    APPEND WA_REL_OPTIONS TO INT_REL_OPTIONS.
+
+    WA_OBJECT-INSTID = P_LINK.  "(THIS IS THE PR NUMBER)
+    WA_OBJECT-TYPEID = P_OBJTY. "" PR
+    WA_OBJECT-CATID  = 'BO'. "" Business Object
+    REFRESH INT_LINKS[].
+
+    TRY.
+        CALL METHOD CL_BINARY_RELATION=>READ_LINKS_OF_BINRELS
+          EXPORTING
+            IS_OBJECT           = WA_OBJECT          " Start object
+            IT_RELATION_OPTIONS = INT_REL_OPTIONS    " Link Types
+            IP_ROLE             = 'GOSAPPLOBJ'       " Role type
+          IMPORTING
+            ET_LINKS            = INT_LINKS.         " Table with Relationship Records
+
+      CATCH CX_OBL_PARAMETER_ERROR. " Incorrect Calling of Interface
+      CATCH CX_OBL_INTERNAL_ERROR.  " Internal Error of Relationship Service
+      CATCH CX_OBL_MODEL_ERROR.     " Error with Model Roles
+    ENDTRY.
+
+
+    DATA : LV_DOC_ID      TYPE SOFOLENTI1-DOC_ID,
+           INT_CONT_BIN   TYPE TABLE OF SOLISTI1,
+           IT_BIN_B1      TYPE STANDARD TABLE OF SOLIX,
+           INT_CONT_SOLIX TYPE TABLE OF SOLIX,
+           WA_DOC_DATA    TYPE SOFOLENTI1.
+
+    DATA : LT_ATT_HEAD  TYPE SOLI_TAB,
+           LV_TEXT_LINE TYPE SOLI,
+           LV_FILENAME  TYPE STRING,
+           EV_EXTENSION TYPE STRING,
+           EV_FILENAME  TYPE STRING,
+           SUBJ_B1      TYPE SO_OBJ_DES.
+
+    LOOP AT INT_LINKS INTO WA_LINKS.
+      LV_DOC_ID = WA_LINKS-INSTID_B.
+
+      REFRESH INT_CONT_BIN[].
+      REFRESH INT_CONT_SOLIX[].
+
+      CALL FUNCTION 'SO_DOCUMENT_READ_API1'
+        EXPORTING
+          DOCUMENT_ID                = LV_DOC_ID
+        IMPORTING
+          DOCUMENT_DATA              = WA_DOC_DATA
+        TABLES
+          CONTENTS_HEX               = INT_CONT_SOLIX
+          OBJECT_CONTENT             = INT_CONT_BIN
+        EXCEPTIONS
+          DOCUMENT_ID_NOT_EXIST      = 1
+          OPERATION_NO_AUTHORIZATION = 2
+          X_ERROR                    = 3
+          OTHERS                     = 4.
+      IF SY-SUBRC <> 0.
+* Implement suitable error handling here
+      ENDIF.
+      IF NOT INT_CONT_BIN IS INITIAL..
+        IT_BIN_B1 = INT_CONT_SOLIX.
+        CLEAR : EV_FILENAME, EV_EXTENSION, LV_FILENAME, LV_TEXT_LINE, LT_ATT_HEAD[].
+
+        DATA ATT_B1  TYPE SOODK-OBJTP.
+        CONCATENATE "WA_DOC_DATA-OBJ_DESCR
+                  P_LINK WA_DOC_DATA-CREAT_DATE WA_DOC_DATA-CREAT_TIME INTO SUBJ_B1.
+        EV_EXTENSION  = ATT_B1 = WA_DOC_DATA-OBJ_TYPE.
+        CONCATENATE P_LINK WA_DOC_DATA-CREAT_DATE WA_DOC_DATA-CREAT_TIME
+                   '.' EV_EXTENSION INTO LV_FILENAME.
+        CONCATENATE '&SO_FILENAME=' LV_FILENAME INTO LV_TEXT_LINE.
+        APPEND LV_TEXT_LINE TO LT_ATT_HEAD.
+        "end of subject atachment
+        TRY.
+*-- Add Attachment to the Document
+            IF NOT IT_BIN_B1[] IS INITIAL.
+              CALL METHOD GO_DOCUMENT->ADD_ATTACHMENT
+                EXPORTING
+                  I_ATTACHMENT_TYPE    = ATT_B1 "l_att_type
+                  I_ATTACHMENT_SUBJECT = SUBJ_B1
+                  I_ATT_CONTENT_HEX    = IT_BIN_B1[]
+                  I_ATTACHMENT_HEADER  = LT_ATT_HEAD.
+            ENDIF.
+          CATCH CX_DOCUMENT_BCS INTO DATA(LO_CX_BCX).
+            "Appropriate Exception Handling
+            WRITE: 'Exception:', LO_CX_BCX->ERROR_TYPE.
+        ENDTRY.
+      ENDIF.
+    ENDLOOP.
+* ADD DOCUMENT TO SEND REQUEST
+    CALL METHOD GO_SEND_REQUEST->SET_DOCUMENT( GO_DOCUMENT ).
+* add recipient with its respective attributes to send request
+    DATA R_ADR TYPE  AD_SMTPADR." VALUE 'amitahiniya@ghcl.co.in'.
+*    LOOP AT S_RCVRS.
+    SELECT * FROM YMAIL_ORDER INTO TABLE IT_EMAIL WHERE TYPE = 'REJ'.
+
+    R_ADR = WA_VEND-SMTP_ADDR.
+    LO_RECIPIENT = CL_CAM_ADDRESS_BCS=>CREATE_INTERNET_ADDRESS(
+    R_ADR ).
+    CALL METHOD GO_SEND_REQUEST->ADD_RECIPIENT
+      EXPORTING
+        I_RECIPIENT = LO_RECIPIENT
+        I_EXPRESS   = 'X'.
+
+    CLEAR R_ADR.
+    SORT IT_BYM BY BYERML.
+    DELETE ADJACENT DUPLICATES FROM IT_BYM.
+    LOOP AT IT_BYM INTO WA_BYM.
+      R_ADR = WA_BYM-BYERML.
+      LO_RECIPIENT = CL_CAM_ADDRESS_BCS=>CREATE_INTERNET_ADDRESS(
+    R_ADR ).
+      CALL METHOD GO_SEND_REQUEST->ADD_RECIPIENT
+        EXPORTING
+          I_RECIPIENT = LO_RECIPIENT
+          I_EXPRESS   = 'X'
+          I_COPY      = 'X'.
+
+      CLEAR R_ADR.
+    ENDLOOP.
+
+    R_ADR = 'sanjaygupta@ghcl.co.in'.
+    LO_RECIPIENT = CL_CAM_ADDRESS_BCS=>CREATE_INTERNET_ADDRESS(
+      R_ADR ).
+    CALL METHOD GO_SEND_REQUEST->ADD_RECIPIENT
+      EXPORTING
+        I_RECIPIENT = LO_RECIPIENT
+        I_EXPRESS   = 'X'
+        I_COPY      = 'X'.
+    CLEAR R_ADR.
+
+
+    R_ADR = 'goswami@ghcl.co.in'.
+    LO_RECIPIENT = CL_CAM_ADDRESS_BCS=>CREATE_INTERNET_ADDRESS(
+      R_ADR ).
+    CALL METHOD GO_SEND_REQUEST->ADD_RECIPIENT
+      EXPORTING
+        I_RECIPIENT = LO_RECIPIENT
+        I_EXPRESS   = 'X'
+        I_COPY      = 'X'.
+    CLEAR R_ADR.
+*
+*
+    R_ADR = 'amitahiniya@ghcl.co.in'.
+*    R_ADR = 'mvaidya@ghcl.co.in'.
+    LO_RECIPIENT = CL_CAM_ADDRESS_BCS=>CREATE_INTERNET_ADDRESS(
+      R_ADR ).
+    CALL METHOD GO_SEND_REQUEST->ADD_RECIPIENT
+      EXPORTING
+        I_RECIPIENT = LO_RECIPIENT
+        I_EXPRESS   = 'X'
+        I_COPY      = 'X'.
+    CLEAR R_ADR.
+
+    CALL METHOD GO_SEND_REQUEST->SET_SEND_IMMEDIATELY
+      EXPORTING
+        I_SEND_IMMEDIATELY = 'X'.
+    CALL METHOD GO_SEND_REQUEST->SEND(
+      EXPORTING
+        I_WITH_ERROR_SCREEN = 'X'
+      RECEIVING
+        RESULT              = LV_SENT_TO_ALL ).
+    IF LV_SENT_TO_ALL = 'X'.
+      MESSAGE I000(8I) WITH 'Email send succesfully'.
+    ELSEIF LV_SENT_TO_ALL IS INITIAL.
+      MESSAGE I000(8I) WITH 'Email not send'.
+    ENDIF.
+    COMMIT WORK.
+  ENDLOOP.
+
+
+*Executing the standard mail sending program for immediate dispatch of mail
+  CONSTANTS : C_MODE TYPE CHAR3 VALUE 'INT'.
+  SUBMIT RSCONN01 WITH MODE = C_MODE AND RETURN.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form ATTACH_BINDING
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM ATTACH_BINDING .
+*  DATA : IT_BIN_B1 TYPE STANDARD TABLE OF SOLIX,
+
+ENDFORM.
