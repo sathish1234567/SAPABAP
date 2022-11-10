@@ -1,3 +1,35 @@
+******************  INTERNAL TABLE FOR MAIL ********************
+DATA: objpack LIKE sopcklsti1 OCCURS 2 WITH HEADER LINE.
+DATA: objhead LIKE solisti1 OCCURS 1 WITH HEADER LINE.
+DATA: objbin LIKE solisti1 OCCURS 10 WITH HEADER LINE.
+DATA: objbin1 LIKE solisti1 OCCURS 10 WITH HEADER LINE.
+DATA: objtxt LIKE solisti1 OCCURS 10 WITH HEADER LINE.
+DATA: reclist LIKE somlreci1 OCCURS 5 WITH HEADER LINE.
+DATA: doc_chng LIKE sodocchgi1.
+DATA: tab_lines LIKE sy-tabix.
+TYPE-POOLS: abap.
+CONSTANTS : tab_mark TYPE abap_char1
+ VALUE %_horizontal_tab. "tab character
+CONSTANTS : cr_mark TYPE abap_cr_lf VALUE %_cr_lf. "carriage return character
+DATA : iheadsh LIKE gxxlt_v  OCCURS 0 WITH HEADER LINE.
+DATA : iheadsd LIKE gxxlt_v  OCCURS 0 WITH HEADER LINE.
+DATA : wa_heads LIKE gxxlt_v.
+DATA  w_text(1500).
+DATA: wbody_st TYPE sopcklsti1-head_start.
+DATA: whead_st TYPE sopcklsti1-head_start VALUE 1.
+FIELD-SYMBOLS : <list> TYPE table, <l_line> TYPE ANY.
+DATA : BEGIN OF it_tab OCCURS 0,
+        line(255),
+       END OF it_tab.
+******************  INTERNAL TABLE FOR MAIL ********************
+DATA: BEGIN OF htab OCCURS 0,
+        line(255),
+      END OF htab.
+DATA: BEGIN OF dtab OCCURS 0,
+        line(255),
+      END OF dtab.
+
+
 PERFORM fill_tab.
 PERFORM create_header.
 PERFORM create_entry_for_data.
