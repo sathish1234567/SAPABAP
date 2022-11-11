@@ -1,4 +1,9 @@
-*----------------------------------------------------------------------*
+
+loop at <itab> into <wa>.
+  perform mail_attach.
+endloop.
+
+
 ***INCLUDE YMM_REJECT_MAIL_VENDOR_MAILF01.
 *----------------------------------------------------------------------*
 *&---------------------------------------------------------------------*
@@ -46,8 +51,7 @@ FORM MAIL_ATACH .
   APPEND W_OBJTXT TO T_OBJTXT.
   W_OBJTXT-LINE = '<br>'.
   APPEND W_OBJTXT TO T_OBJTXT.
-  W_OBJTXT-LINE =
-'Please note that following materials have been rejected during inspe' &
+  W_OBJTXT-LINE = 'Please note that following materials have been rejected during inspe' &
 'ction as per users input mentioned in table under “Reason for Reject' &
 'ion”.'
   .
@@ -209,6 +213,7 @@ FORM MAIL_ATACH .
 
 *  W_OBJPACK-OBJ_DESCR = 'Rejection Alert to Vendor'.
 *  APPEND W_OBJTXT TO T_OBJTXT.
+
   "Class data declaration
   DATA: GO_SEND_REQUEST  TYPE REF TO CL_BCS,
         GO_DOCUMENT      TYPE REF TO CL_DOCUMENT_BCS,
@@ -218,14 +223,6 @@ FORM MAIL_ATACH .
         LO_BCS_EXCEPTION TYPE REF TO CX_BCS,
         GV_SUB           TYPE STRING,
         LV_SENT_TO_ALL   TYPE OS_BOOLEAN.
-
-  GO_SEND_REQUEST = CL_BCS=>CREATE_PERSISTENT( ).
-  GO_DOCUMENT = CL_DOCUMENT_BCS=>CREATE_DOCUMENT(
-  I_TYPE = 'HTM'
-  I_TEXT = T_OBJTXT
-* i_length = '12'
-  I_SUBJECT = 'Rejection Alert to Vendor' ).
-
 
 *  GV_SUB = 'Rejection Alert to Vendor'.
 *  CALL METHOD GO_SEND_REQUEST->SET_MESSAGE_SUBJECT
@@ -249,8 +246,21 @@ FORM MAIL_ATACH .
 *  APPEND W_OBJPACK TO T_OBJPACK.
 
 
+*    AT FIRST.
+  GO_SEND_REQUEST = CL_BCS=>CREATE_PERSISTENT( ).
+  GO_DOCUMENT = CL_DOCUMENT_BCS=>CREATE_DOCUMENT(
+  I_TYPE = 'HTM'
+  I_TEXT = T_OBJTXT
+* i_length = '12'
+  I_SUBJECT = 'Rejection Alert to Vendor' ).
+
+* ADD DOCUMENT TO SEND REQUEST
+  CALL METHOD GO_SEND_REQUEST->SET_DOCUMENT( GO_DOCUMENT ).
+*    ENDAT.
+  " Attaching GOS Object
   LOOP AT IT_FINAL INTO WA_FINAL WHERE LIFNR = WA_VEND-LIFNR.
     " create attachment
+
 
     P_LINK = WA_FINAL-PRUEFLOS.
     P_OBJTY = 'BUS2045'.
@@ -357,115 +367,97 @@ FORM MAIL_ATACH .
         ENDTRY.
       ENDIF.
     ENDLOOP.
-* ADD DOCUMENT TO SEND REQUEST
-    CALL METHOD GO_SEND_REQUEST->SET_DOCUMENT( GO_DOCUMENT ).
-* add recipient with its respective attributes to send request
-    DATA R_ADR TYPE  AD_SMTPADR." VALUE 'amitahiniya@ghcl.co.in'.
-*    LOOP AT S_RCVRS.
-    SELECT * FROM YMAIL_ORDER INTO TABLE IT_EMAIL WHERE TYPE = 'REJ'.
 
-    R_ADR = WA_VEND-SMTP_ADDR.
-    LO_RECIPIENT = CL_CAM_ADDRESS_BCS=>CREATE_INTERNET_ADDRESS(
-    R_ADR ).
-    CALL METHOD GO_SEND_REQUEST->ADD_RECIPIENT
-      EXPORTING
-        I_RECIPIENT = LO_RECIPIENT
-        I_EXPRESS   = 'X'.
-
-    CLEAR R_ADR.
-    SORT IT_BYM BY BYERML.
-    DELETE ADJACENT DUPLICATES FROM IT_BYM.
-    LOOP AT IT_BYM INTO WA_BYM.
-      R_ADR = WA_BYM-BYERML.
-      LO_RECIPIENT = CL_CAM_ADDRESS_BCS=>CREATE_INTERNET_ADDRESS(
-    R_ADR ).
-      CALL METHOD GO_SEND_REQUEST->ADD_RECIPIENT
-        EXPORTING
-          I_RECIPIENT = LO_RECIPIENT
-          I_EXPRESS   = 'X'
-          I_COPY      = 'X'.
-
-      CLEAR R_ADR.
-    ENDLOOP.
-
-    R_ADR = 'sanjaygupta@ghcl.co.in'.
-    LO_RECIPIENT = CL_CAM_ADDRESS_BCS=>CREATE_INTERNET_ADDRESS(
-      R_ADR ).
-    CALL METHOD GO_SEND_REQUEST->ADD_RECIPIENT
-      EXPORTING
-        I_RECIPIENT = LO_RECIPIENT
-        I_EXPRESS   = 'X'
-        I_COPY      = 'X'.
-    CLEAR R_ADR.
-
-
-    R_ADR = 'goswami@ghcl.co.in'.
-    LO_RECIPIENT = CL_CAM_ADDRESS_BCS=>CREATE_INTERNET_ADDRESS(
-      R_ADR ).
-    CALL METHOD GO_SEND_REQUEST->ADD_RECIPIENT
-      EXPORTING
-        I_RECIPIENT = LO_RECIPIENT
-        I_EXPRESS   = 'X'
-        I_COPY      = 'X'.
-    CLEAR R_ADR.
-*
-*
-    R_ADR = 'amitahiniya@ghcl.co.in'.
-*    R_ADR = 'mvaidya@ghcl.co.in'.
-    LO_RECIPIENT = CL_CAM_ADDRESS_BCS=>CREATE_INTERNET_ADDRESS(
-      R_ADR ).
-    CALL METHOD GO_SEND_REQUEST->ADD_RECIPIENT
-      EXPORTING
-        I_RECIPIENT = LO_RECIPIENT
-        I_EXPRESS   = 'X'
-        I_COPY      = 'X'.
-    CLEAR R_ADR.
-
-    CALL METHOD GO_SEND_REQUEST->SET_SEND_IMMEDIATELY
-      EXPORTING
-        I_SEND_IMMEDIATELY = 'X'.
-    CALL METHOD GO_SEND_REQUEST->SEND(
-      EXPORTING
-        I_WITH_ERROR_SCREEN = 'X'
-      RECEIVING
-        RESULT              = LV_SENT_TO_ALL ).
-    IF LV_SENT_TO_ALL = 'X'.
-      MESSAGE I000(8I) WITH 'Email send succesfully'.
-    ELSEIF LV_SENT_TO_ALL IS INITIAL.
-      MESSAGE I000(8I) WITH 'Email not send'.
-    ENDIF.
-    COMMIT WORK.
   ENDLOOP.
 
+* add recipient with its respective attributes to send request
+  DATA R_ADR TYPE  AD_SMTPADR." VALUE 'amitahiniya@ghcl.co.in'.
+*    LOOP AT S_RCVRS.
+  SELECT * FROM YMAIL_ORDER INTO TABLE IT_EMAIL WHERE TYPE = 'REJ'.
 
-*Executing the standard mail sending program for immediate dispatch of mail
-  CONSTANTS : C_MODE TYPE CHAR3 VALUE 'INT'.
-  SUBMIT RSCONN01 WITH MODE = C_MODE AND RETURN.
+  R_ADR = WA_VEND-SMTP_ADDR.
+  LO_RECIPIENT = CL_CAM_ADDRESS_BCS=>CREATE_INTERNET_ADDRESS(
+  R_ADR ).
+  CALL METHOD GO_SEND_REQUEST->ADD_RECIPIENT
+    EXPORTING
+      I_RECIPIENT = LO_RECIPIENT
+      I_EXPRESS   = 'X'.
+
+  CLEAR R_ADR.
+  SORT IT_BYM BY BYERML.
+  DELETE ADJACENT DUPLICATES FROM IT_BYM.
+  LOOP AT IT_BYM INTO WA_BYM.
+    R_ADR = WA_BYM-BYERML.
+    LO_RECIPIENT = CL_CAM_ADDRESS_BCS=>CREATE_INTERNET_ADDRESS(
+  R_ADR ).
+    CALL METHOD GO_SEND_REQUEST->ADD_RECIPIENT
+      EXPORTING
+        I_RECIPIENT = LO_RECIPIENT
+        I_EXPRESS   = 'X'
+        I_COPY      = 'X'.
+
+    CLEAR R_ADR.
+  ENDLOOP.
+
+  R_ADR = 'sanjaygupta@ghcl.co.in'.
+  LO_RECIPIENT = CL_CAM_ADDRESS_BCS=>CREATE_INTERNET_ADDRESS(
+    R_ADR ).
+  CALL METHOD GO_SEND_REQUEST->ADD_RECIPIENT
+    EXPORTING
+      I_RECIPIENT = LO_RECIPIENT
+      I_EXPRESS   = 'X'
+      I_COPY      = 'X'.
+  CLEAR R_ADR.
 
 
+  R_ADR = 'goswami@ghcl.co.in'.
+  LO_RECIPIENT = CL_CAM_ADDRESS_BCS=>CREATE_INTERNET_ADDRESS(
+    R_ADR ).
+  CALL METHOD GO_SEND_REQUEST->ADD_RECIPIENT
+    EXPORTING
+      I_RECIPIENT = LO_RECIPIENT
+      I_EXPRESS   = 'X'
+      I_COPY      = 'X'.
+  CLEAR R_ADR.
+*
+*
+  R_ADR = 'amitahiniya@ghcl.co.in'.
+*    R_ADR = 'mvaidya@ghcl.co.in'.
+  LO_RECIPIENT = CL_CAM_ADDRESS_BCS=>CREATE_INTERNET_ADDRESS(
+    R_ADR ).
+  CALL METHOD GO_SEND_REQUEST->ADD_RECIPIENT
+    EXPORTING
+      I_RECIPIENT = LO_RECIPIENT
+      I_EXPRESS   = 'X'
+      I_COPY      = 'X'.
+  CLEAR R_ADR.
+
+  CALL METHOD GO_SEND_REQUEST->SET_SEND_IMMEDIATELY
+    EXPORTING
+      I_SEND_IMMEDIATELY = 'X'.
+  CALL METHOD GO_SEND_REQUEST->SEND(
+    EXPORTING
+      I_WITH_ERROR_SCREEN = 'X'
+    RECEIVING
+      RESULT              = LV_SENT_TO_ALL ).
+  IF LV_SENT_TO_ALL = 'X'.
+      COMMIT WORK.
+    MESSAGE I000(8I) WITH 'Email send succesfully'.
+  ELSEIF LV_SENT_TO_ALL IS INITIAL.
+    MESSAGE I000(8I) WITH 'Email not send'.
+  ENDIF.
 
 
+*
 
 
+*  IF LAST_TRIGGER = 'X'.
+*    COMMIT WORK.
+*    CLEAR LAST_TRIGGER.
+**Executing the standard mail sending program for immediate dispatch of mail
+*    CONSTANTS : C_MODE TYPE CHAR3 VALUE 'INT'.
+*    SUBMIT RSCONN01 WITH MODE = C_MODE AND RETURN.
+*  ENDIF.
 
-
-
-
-
-
-
-
-
-ENDFORM.
-*&---------------------------------------------------------------------*
-*& Form ATTACH_BINDING
-*&---------------------------------------------------------------------*
-*& text
-*&---------------------------------------------------------------------*
-*& -->  p1        text
-*& <--  p2        text
-*&---------------------------------------------------------------------*
-FORM ATTACH_BINDING .
-*  DATA : IT_BIN_B1 TYPE STANDARD TABLE OF SOLIX,
 
 ENDFORM.
