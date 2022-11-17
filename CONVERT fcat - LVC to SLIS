@@ -1,0 +1,13 @@
+DATA GT_ALV_FCAT_SLIS TYPE SLIS_T_FIELDCAT_ALV.
+  CALL FUNCTION 'LVC_TRANSFER_TO_SLIS'
+    EXPORTING
+      IT_FIELDCAT_LVC         = GT_ALV_FIELDCAT  <-- LVC
+    IMPORTING
+      ET_FIELDCAT_ALV         = GT_ALV_FCAT_SLIS ---> SLIS
+    EXCEPTIONS
+      IT_DATA_MISSING         = 1
+      IT_FIELDCAT_LVC_MISSING = 2
+      OTHERS                  = 3.
+  IF SY-SUBRC <> 0.
+* Implement suitable error handling here
+  ENDIF.
