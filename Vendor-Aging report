@@ -1,0 +1,1220 @@
+REPORT zrfi_vendor_ageing_new NO STANDARD PAGE HEADING.
+
+
+TYPE-POOLS: slis.
+TABLES: bsik,                            "Accounting Index for Vendor
+        lfa1,                            "Customer Master
+        t001,                            "Company Code
+        tvzbt,                           "Terms of Payment Texts
+        bseg,                            "Accounting Doc Segment
+        lfb1,                            "Customer Master
+        vbrk.
+*--------------------------------------------------------------------*
+
+TYPES : BEGIN OF ty_data,                "For Invoice Details
+          lifnr       LIKE lfa1-lifnr,
+          augdt       LIKE bsik-augdt,
+          augbl       LIKE bsik-augbl,
+          name1       LIKE lfa1-name1,
+          ort01       TYPE lfa1-ort01,
+          regio       TYPE lfa1-regio,
+          bezei       TYPE t005u-bezei,
+          vtweg       TYPE vbrk-vtweg,
+          vtwtx       TYPE tvtwt-vtext,
+          werks       TYPE rseg-werks,
+          name1_p     TYPE t001w-name1,
+          bldat       LIKE bsik-bldat,
+          budat       LIKE bsik-budat,
+          belnr       LIKE bsik-belnr,
+          shkzg       LIKE bsik-shkzg,
+          blart       LIKE bsik-blart,
+          ltextb      LIKE t003t-ltext,
+          ltexts      LIKE t074t-ltext,
+          tinno       LIKE j_1imovend-j_1ilstno,
+          monat       LIKE bsik-monat,
+          gsber       LIKE bsik-gsber,
+          mwskz       LIKE bsik-mwskz,
+          dmbtr       LIKE bsik-dmbtr,
+          wrbtr(13)   TYPE p DECIMALS 4,
+          waers       LIKE bsik-waers,
+          zfbdt       LIKE bsik-zfbdt,
+          zterm       LIKE bsik-zterm,
+          vtext       LIKE t052u-text1,
+          sgtxt       LIKE bsik-sgtxt,
+          xblnr       LIKE bsik-xblnr,
+          zbd1t       TYPE p, "LIKE BSID-ZBD1T,"Cash discount days
+          zbd2t       TYPE p,
+          due         LIKE sy-datum,
+          duedate     LIKE sy-datum,
+          int1        LIKE bsik-dmbtr,     "Amount classified on the
+          int2        LIKE bsik-dmbtr,           "basis of no of days delay
+          int3        LIKE bsik-dmbtr,
+          int4        LIKE bsik-dmbtr,
+          int5        LIKE bsik-dmbtr,
+          int6        LIKE bsik-dmbtr,
+          int7        LIKE bsik-dmbtr,
+          int8        LIKE bsik-dmbtr,
+          umskz       LIKE bsik-umskz,         "Special G/L Indicator]
+          soldto      LIKE lfa1-lifnr,
+          soldto_name TYPE lfa1-name1,
+          kdgrp       LIKE vbrk-kdgrp,    "Customer group.
+          ktokk       LIKE lfa1-ktokk,    "Account group.
+          ktext       TYPE t151t-ktext  ,        " Customer Group Name
+          due_amt     LIKE bsik-dmbtr,          " Due Amount
+          no_due      LIKE bsik-dmbtr,          "Not Due Amount
+          zuonr       LIKE bsik-zuonr,          "Assignment
+          ebeln       LIKE bsik-ebeln,
+          due_days    TYPE i,                 "Due Days
+          ztag1       TYPE dztage,                 "Due Days
+          fkimg       TYPE vbrp-fkimg,           "Quantity
+          gjahr       LIKE bsik-gjahr,          "Fiscal Year
+          buzei       LIKE bsik-buzei ,         "Line item
+          bukrs       TYPE bsik-bukrs,
+          prctr       TYPE faglflexa-prctr,
+          txt30       TYPE txt30_077t,
+          ltext       TYPE ltext,
+          rwcur       TYPE faglflexa-rwcur,
+          """"" added by tani on 10.08.2018""""""""
+          awkey       TYPE bkpf-awkey,
+        END OF ty_data.
+
+TYPES: BEGIN OF ty_faglflexa,
+         ryear  TYPE faglflexa-ryear,
+         docnr  TYPE faglflexa-docnr,
+         rldnr  TYPE faglflexa-rldnr,
+         rbukrs TYPE faglflexa-rbukrs,
+         rcntr  TYPE faglflexa-rcntr,
+         prctr  TYPE faglflexa-prctr,
+         buzei  TYPE faglflexa-buzei,
+         hsl    TYPE faglflexa-hsl,
+         wsl    TYPE faglflexa-wsl,
+         rwcur  TYPE rwcur,
+       END OF ty_faglflexa.
+"""""" Added by tani on 10.08.2018"""""""
+TYPES : BEGIN OF ty_bkpf,
+          belnr TYPE bkpf-belnr,
+          gjahr TYPE bkpf-gjahr,
+          blart TYPE bkpf-blart,
+          awkey TYPE bkpf-awkey,
+        END OF ty_bkpf.
+
+DATA : it_bkpf TYPE STANDARD TABLE OF ty_bkpf,
+       wa_bkpf TYPE                   ty_bkpf.
+"""""" Added by tani on 10.08.2018"""""""
+DATA : it_faglflexa TYPE STANDARD TABLE OF ty_faglflexa,
+       wa_faglflexa TYPE                   ty_faglflexa.
+
+TYPES : BEGIN OF t_t077y,
+          spras TYPE spras,
+          ktokk TYPE ktokk,
+          txt30 TYPE txt30_077t,
+        END OF t_t077y.
+
+DATA : it_t077y TYPE STANDARD TABLE OF t_t077y,
+       wa_t077y TYPE                   t_t077y.
+
+TYPES : BEGIN OF t_t052,
+          zterm TYPE dzterm,
+          ztag1 TYPE dztage,
+        END OF t_t052.
+
+DATA : it_t052 TYPE STANDARD TABLE OF t_t052,
+       wa_t052 TYPE                   t_t052.
+
+TYPES : BEGIN OF t_cepct,
+          spras TYPE spras,
+          prctr TYPE prctr,
+          ltext TYPE ltext,
+        END OF t_cepct.
+
+DATA : it_cepct TYPE STANDARD TABLE OF t_cepct,
+       wa_cepct TYPE                   t_cepct.
+
+TYPES : BEGIN OF t_tgsbt,
+          gsber TYPE tgsbt-gsber,
+          gtext TYPE tgsbt-gtext,
+        END OF t_tgsbt.
+
+DATA : it_tgsbt TYPE STANDARD TABLE OF t_tgsbt,
+       wa_tgsbt TYPE                   t_tgsbt.
+
+TYPES : BEGIN OF ty_temp,                  "For Totals
+          lifnr         LIKE lfa1-lifnr,
+          name1         LIKE lfa1-name1,
+          ort01         TYPE lfa1-ort01,
+          regio         TYPE lfa1-regio,
+          bezei         TYPE t005u-bezei,
+          vtext         TYPE tvtwt-vtext,
+          belnr         LIKE bsik-belnr,
+          blart         LIKE bsik-blart,         "Document type
+          xblnr         LIKE bsik-xblnr,         "Reference Document Number
+          bldat         LIKE bsik-bldat,  " added by nitai on 030916.
+          zbd1t         TYPE p, "LIKE BSID-ZBD1T,"Cash discount days
+          umskz         LIKE bsik-umskz,         "Special G/L Indicator
+          tot_drbal(15) TYPE p DECIMALS 2, "Total Balance-DEBIT
+          tot_crbal(15) TYPE p DECIMALS 2, "Total Balance-CREDIT
+          tot_balan(15) TYPE p DECIMALS 2, "Total Balance
+          tot_pay(15)   TYPE p DECIMALS 2,         "Total Payments
+          int1          LIKE bsik-dmbtr,     "Amount classified on the
+          int2          LIKE bsik-dmbtr,           "basis of no of days delay
+          int3          LIKE bsik-dmbtr,
+          int4          LIKE bsik-dmbtr,
+          int5          LIKE bsik-dmbtr,
+          int6          LIKE bsik-dmbtr,
+          int7          LIKE bsik-dmbtr,
+          int8          LIKE bsik-dmbtr,
+          soldto        LIKE lfa1-lifnr,
+          soldto_name   TYPE lfa1-name1,
+          ktokk         LIKE lfa1-ktokk,    "Account group.
+          ktext         TYPE t151t-ktext  ,        " Customer Group Name
+          txt30         TYPE txt30_077t,
+          ltext         TYPE ltext,
+          no_due        LIKE bsid-dmbtr,
+        END OF ty_temp.
+*--------------------------------------------------------------------*
+DATA: fieldtab   TYPE slis_t_fieldcat_alv,
+      heading    TYPE slis_t_listheader,
+      layout     TYPE slis_layout_alv,
+      events     TYPE slis_t_event,
+      repname    LIKE sy-repid,
+      f2code     LIKE sy-ucomm VALUE  '&ETA',
+      g_save(1)  TYPE c,
+      g_variant  LIKE disvariant,
+      gx_variant LIKE disvariant,
+      g_exit(1)  TYPE c.
+
+DATA: rs_variant LIKE disvariant.
+
+DATA: alv_print TYPE slis_print_alv.
+DATA: alv_detail_func(30).
+DATA: fieldcat    TYPE slis_t_fieldcat_alv,
+      wa_fieldcat TYPE slis_fieldcat_alv,
+      selfield    TYPE slis_selfield,
+      gs_layout   TYPE slis_layout_alv.
+
+*--------------------------------------------------------------------*
+DATA : it_data TYPE STANDARD TABLE OF ty_data,
+       wa_data TYPE                   ty_data.
+DATA : it_final TYPE STANDARD TABLE OF ty_data,
+       wa_final TYPE                   ty_data.
+DATA : it_data1 TYPE STANDARD TABLE OF ty_data,
+       wa_data1 TYPE                   ty_data.
+DATA : it_temp TYPE TABLE OF ty_temp,
+       wa_temp TYPE          ty_temp.
+
+CONSTANTS: c_dmtbr TYPE bseg-dmbtr VALUE IS INITIAL.
+
+DATA: BEGIN OF ls_lfa1,
+        lifnr TYPE lfa1-lifnr,
+        name1 TYPE lfa1-name1,
+        land1 TYPE lfa1-land1,
+        regio TYPE lfa1-regio,
+        ort01 TYPE lfa1-ort01,
+        ktokk TYPE lfa1-ktokk,
+      END OF ls_lfa1.
+
+DATA: lt_lfa1 LIKE TABLE OF ls_lfa1.
+
+DATA : w_duedate     LIKE sy-datum,        "Due Date for Payments
+       w_days        LIKE rc65a-bdatum,       "No of days after due date
+       w_temp(12),                     "stores the credit indicator
+       w_string      TYPE string,
+       w_crbal(15)   TYPE p DECIMALS 2,  "Credit Sub-Total
+       w_drbal(15)   TYPE p DECIMALS 2,  "Debit Sub-Total
+       w_payable(15) TYPE p DECIMALS 2,
+       w_oldpage     TYPE i VALUE 1.
+
+CONSTANTS: c_days TYPE char2 VALUE -1.
+*--------------------------------------------------------------------*
+
+*--------------------------------------------------------------------*
+SELECTION-SCREEN BEGIN OF BLOCK b5 WITH FRAME.
+
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE text-001.
+
+SELECT-OPTIONS: slifnr FOR lfa1-lifnr,
+                sgjahr FOR bseg-gjahr .                "Business Area
+
+PARAMETERS    :p_date LIKE lfa1-erdat DEFAULT sy-datum, "Current Date,
+               pbukrs LIKE t001-bukrs OBLIGATORY.
+SELECT-OPTIONS: s_umskz FOR bseg-umskz.
+SELECT-OPTIONS: s_prctr FOR bseg-prctr.
+SELECT-OPTIONS : s_ktokk FOR lfa1-ktokk.
+SELECTION-SCREEN END OF BLOCK b1.
+SELECTION-SCREEN BEGIN OF BLOCK b4 WITH FRAME TITLE text-004.
+PARAMETERS :  psummary AS CHECKBOX.
+PARAMETERS :  pbase AS CHECKBOX.
+SELECTION-SCREEN END OF BLOCK b4.
+SELECTION-SCREEN SKIP.
+SELECTION-SCREEN BEGIN OF BLOCK b2 WITH FRAME TITLE text-002.
+SELECTION-SCREEN BEGIN OF LINE.
+SELECTION-SCREEN: COMMENT 2(10) text1,
+                  POSITION 16.
+PARAMETERS: int1 LIKE rfpdo1-allgfael,
+            int2 LIKE rfpdo1-allgfael,
+            int3 LIKE rfpdo1-allgfael,
+            int4 LIKE rfpdo1-allgfael,
+            int5 LIKE rfpdo1-allgfael.
+*            INT6 LIKE RFPDO1-ALLGFAEL.
+*            int7 LIKE rfpdo1-allgfael.
+SELECTION-SCREEN END OF LINE.
+SELECTION-SCREEN END OF BLOCK b2.
+SELECTION-SCREEN END OF BLOCK b5.
+
+INITIALIZATION.
+
+  g_variant-report = sy-repid.
+  PERFORM initialize_variant.
+  text1 = 'Interval'.
+  int1  = '30'.
+  int2  = '60'.
+  int3  = '90'.
+  int4  = '180'.
+  int5  = '365'.
+*  int6  = '720'.
+*  int7 = '70'.
+*-----------------------------------------------------------------------
+*   At Selection Screen
+*
+*-----------------------------------------------------------------------
+AT SELECTION-SCREEN.
+*  PERFORM pai_of_selection_screen.
+  PERFORM validate_flds.
+
+START-OF-SELECTION.
+  PERFORM get_data.
+  PERFORM fieldcat.
+  PERFORM display_alv.
+
+*&---------------------------------------------------------------------*
+*&      Form  validate_flds
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+FORM validate_flds.
+
+  CLEAR lfa1-lifnr.
+*  SELECT LIFNR UP TO 1 ROWS
+*    INTO LFA1-LIFNR
+*      FROM LFA1
+*        WHERE LIFNR IN SLIFNR
+*          AND SPRAS = SY-LANGU.
+*  ENDSELECT.
+
+  LOOP AT slifnr.
+    CHECK slifnr-option = 'EQ'.
+    SELECT SINGLE * FROM lfa1
+           WHERE
+           lifnr = slifnr-low.
+    IF sy-subrc NE 0.
+      MESSAGE 'Invalid Vendor Code Range' TYPE 'E'.
+      EXIT.
+    ENDIF.
+  ENDLOOP.
+
+  LOOP AT slifnr.
+    CHECK slifnr-option = 'BT'.
+    SELECT SINGLE * FROM lfa1
+            WHERE
+           lifnr = slifnr-low.
+    IF sy-subrc NE 0.
+      MESSAGE 'Invalid Vendor Code Range' TYPE 'E'.
+      EXIT.
+    ENDIF.
+  ENDLOOP.
+
+  LOOP AT slifnr.
+    CHECK slifnr-option = 'BT'.
+    SELECT SINGLE * FROM lfa1
+          WHERE
+           lifnr = slifnr-high.
+    IF sy-subrc NE 0.
+      MESSAGE 'Invalid Vendor Code Range' TYPE 'E'.
+      EXIT.
+    ENDIF.
+  ENDLOOP.
+
+*  IF SY-SUBRC <> 0.
+*    MESSAGE 'Invalid Vendor Code Range' TYPE 'E'.
+*  ENDIF.
+
+* Validate Company Code
+  CLEAR t001-bukrs.
+  SELECT bukrs UP TO 1 ROWS
+    INTO t001-bukrs
+      FROM t001
+      WHERE bukrs = pbukrs
+        AND spras = sy-langu.
+  ENDSELECT.
+
+  IF sy-subrc <> 0.
+    MESSAGE 'Invalid Company Code' TYPE 'E'.
+  ENDIF.
+  IF ( int1 > int2 ) OR ( int1 > int3 ) OR
+   ( int1 > int4 ) OR ( int1 > int5 ) ."OR ( int1 > int6 ) ."OR ( int1 > int7 ).
+    MESSAGE 'Column 1 greater than Column# 2 or 3 or 4 or 5' TYPE 'E'.
+  ENDIF.
+*column 2
+  IF ( int2 > int3 ) OR ( int2 > int4 ) OR ( int2 > int5 ) ."OR ( int2 > int6 ) ."OR ( int2 > int7 ).
+    MESSAGE 'Column 2 greater than Column# 3 or 4 or 5 ' TYPE 'E'.
+  ENDIF.
+*column3
+  IF ( int3 > int4 ) OR ( int3 > int5 )." OR ( int3 > int6 )." OR ( int3 > int7 ).
+    MESSAGE 'Column 3 greater than Column# 4 or 5 ' TYPE 'E'.
+  ENDIF.
+*column4
+  IF ( int4 > int5 ) ."OR ( int4 > int6 )." OR ( int4 > int7 ).
+    MESSAGE 'Column 4 greater than Column# 5' TYPE 'E'.
+  ENDIF.
+*column5
+*  IF ( int5 > int6 )." OR ( int5 > int7 ).
+*    MESSAGE 'Column 5 greater than Column# 6 ' TYPE 'E'.
+*  ENDIF.
+*column5
+*  IF ( int6 > int7 ).
+*    MESSAGE 'Column 6 greater than Column# 7' TYPE 'E'.
+*  ENDIF.
+
+  IF s_prctr-low IS NOT INITIAL.
+    SHIFT s_prctr-low LEFT DELETING LEADING '0'.
+  ENDIF.
+  IF s_prctr-high IS NOT INITIAL.
+    SHIFT s_prctr-high LEFT DELETING LEADING '0'.
+  ENDIF.
+
+ENDFORM.                    "validate_flds
+
+*&---------------------------------------------------------------------*
+*&      Form  get_data
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+FORM get_data.
+
+  DATA: lw_data TYPE ty_data,
+        l_fkimg TYPE vbrp-fkimg.
+
+  SELECT lifnr augdt augbl budat bldat zfbdt zbd1t zbd2t zterm
+         belnr zuonr  shkzg gsber dmbtr umskz xblnr blart ebeln gjahr buzei bukrs
+               FROM bsik APPENDING CORRESPONDING FIELDS OF TABLE it_data
+                                               WHERE bukrs = pbukrs
+                                                 AND budat <= p_date
+                                                 AND lifnr IN slifnr
+                                                 AND gjahr IN sgjahr
+                                                 AND umskz IN s_umskz.
+
+  SELECT lifnr augdt augbl budat bldat zfbdt zbd1t zbd2t zterm
+       belnr zuonr  shkzg gsber dmbtr umskz xblnr blart ebeln gjahr buzei bukrs
+             FROM bsak APPENDING CORRESPONDING FIELDS OF TABLE it_data
+                                             WHERE bukrs = pbukrs
+                                               AND augdt GT p_date
+                                               AND budat <= p_date
+                                               AND lifnr IN slifnr
+                                               AND gjahr IN sgjahr
+                                               AND umskz IN s_umskz.
+
+  IF NOT it_data[] IS INITIAL.
+
+    SELECT zterm ztag1
+     FROM t052
+     INTO TABLE it_t052
+      FOR ALL ENTRIES IN it_data
+    WHERE zterm EQ it_data-zterm.
+
+    SELECT lifnr name1 land1 regio ort01 ktokk FROM lfa1
+      INTO TABLE lt_lfa1
+       FOR ALL ENTRIES IN it_data
+     WHERE lifnr EQ it_data-lifnr
+      AND  ktokk IN s_ktokk.
+
+    SELECT spras ktokk txt30
+      FROM t077y
+      INTO TABLE it_t077y
+       FOR ALL ENTRIES IN lt_lfa1
+     WHERE ktokk EQ lt_lfa1-ktokk
+       AND spras EQ 'EN'.
+
+    SORT lt_lfa1 BY lifnr.
+
+    LOOP AT it_data INTO wa_data.
+      READ TABLE it_t052 INTO wa_t052 WITH KEY zterm = wa_data-zterm.
+      IF sy-subrc EQ 0.
+        wa_data-ztag1 = wa_t052-ztag1.
+      ENDIF.
+
+      READ TABLE lt_lfa1 INTO ls_lfa1
+                         WITH KEY lifnr = wa_data-lifnr BINARY SEARCH.
+      IF: sy-subrc EQ 0.
+        wa_data-name1 = ls_lfa1-name1.
+        wa_data-ort01 = ls_lfa1-ort01.
+        wa_data-regio = ls_lfa1-regio.
+        wa_data-ktokk = ls_lfa1-ktokk.
+
+        READ TABLE it_t077y INTO wa_t077y WITH KEY ktokk = ls_lfa1-ktokk.
+        IF sy-subrc EQ 0.
+          wa_data-txt30 = wa_t077y-txt30.
+        ENDIF.
+
+        SELECT SINGLE bezei FROM t005u INTO wa_data-bezei
+          WHERE spras EQ sy-langu AND
+                land1 EQ ls_lfa1-land1 AND
+                bland EQ ls_lfa1-regio.
+
+        DATA : wa_data1 TYPE ty_data,
+               wa_data2 TYPE ty_data.
+*        SELECT SINGLE werks INTO wa_data-werks FROM rseg WHERE belnr EQ wa_data-belnr.  "" change by tania on 13.08.2018
+******Logic added by tani on 10.08.2018 **********
+        SELECT SINGLE belnr gjahr awkey INTO ( wa_data-belnr, wa_data-gjahr, wa_data-awkey ) FROM bkpf WHERE bukrs = pbukrs
+                                                                                                       "and belnr eq wa_data-belnr
+                                                                                                       AND blart = 'RE'.
+
+        wa_data1-belnr = wa_data-awkey+0(10).
+        wa_data1-gjahr = wa_data-awkey+10(4).
+
+        SELECT SINGLE belnr gjahr werks INTO ( wa_data-belnr, wa_data-gjahr, wa_data-werks ) FROM rseg WHERE belnr EQ wa_data1-belnr
+                                                                                                       AND   gjahr EQ wa_data1-gjahr.
+
+
+
+******Logic added by tani on 10.08.2018 **********
+
+        SELECT SINGLE name1 INTO wa_data-name1_p FROM t001w WHERE werks EQ wa_data-werks.
+        SELECT SINGLE j_1ilstno INTO wa_data-tinno FROM j_1imovend WHERE lifnr EQ wa_data-lifnr.
+        MODIFY it_data FROM wa_data TRANSPORTING name1 regio ort01 bezei ktokk txt30 ztag1 werks name1_p tinno.
+      ELSE.
+        DELETE it_data.
+      ENDIF.
+    ENDLOOP.
+  ENDIF.
+
+  IF it_data IS INITIAL.
+    MESSAGE 'No data found' TYPE 'I'.
+    LEAVE TO SCREEN 0.
+  ENDIF.
+
+  SELECT lifnr name1 land1 regio ort01 ktokk FROM lfa1
+    INTO TABLE lt_lfa1
+     FOR ALL ENTRIES IN it_data
+   WHERE lifnr EQ it_data-lifnr
+     AND ktokk IN s_ktokk.
+
+  SORT it_data BY lifnr belnr.
+
+  SELECT ryear
+         docnr
+         rldnr
+         rbukrs
+         rcntr
+         prctr
+         buzei
+         hsl
+         wsl
+         rwcur
+    FROM faglflexa
+    INTO TABLE it_faglflexa
+    FOR ALL ENTRIES IN it_data
+  WHERE docnr  EQ it_data-belnr
+    AND ryear  EQ it_data-gjahr
+    AND rbukrs EQ it_data-bukrs
+    AND buzei  EQ it_data-buzei
+    AND prctr  IN s_prctr
+    AND rldnr  EQ '0L'.
+
+  SELECT spras
+         prctr
+         ltext
+    FROM cepct
+    INTO TABLE it_cepct
+     FOR ALL ENTRIES IN it_faglflexa
+   WHERE prctr EQ it_faglflexa-prctr
+     AND spras EQ 'EN'.
+
+  SORT it_faglflexa BY rbukrs docnr ryear buzei.
+
+  LOOP AT it_data INTO wa_data.
+    READ TABLE it_faglflexa INTO wa_faglflexa
+                            WITH KEY rbukrs = wa_data-bukrs
+                                     docnr = wa_data-belnr
+                                     ryear = wa_data-gjahr
+                                     buzei = wa_data-buzei BINARY SEARCH.
+    IF sy-subrc = 0.
+      wa_data-prctr = wa_faglflexa-prctr.
+      READ TABLE it_cepct INTO wa_cepct WITH KEY prctr = wa_faglflexa-prctr.
+      IF sy-subrc EQ 0.
+        wa_data-ltext = wa_cepct-ltext.
+      ENDIF.
+      MODIFY it_data FROM wa_data TRANSPORTING prctr ltext.
+    ELSE.
+      DELETE it_data.
+    ENDIF.
+
+  ENDLOOP.
+
+  LOOP AT it_data INTO wa_data.
+    SELECT SINGLE name1
+             FROM lfa1
+             INTO wa_data-soldto_name
+            WHERE lifnr = wa_data-soldto.
+
+    SELECT SINGLE name1 INTO wa_data-name1 FROM lfa1
+    WHERE lifnr = wa_data-lifnr.
+    SELECT SINGLE ltext FROM t003t INTO wa_data-ltextb WHERE blart EQ wa_data-blart AND spras EQ sy-langu.
+    SELECT SINGLE ltext FROM t074t INTO wa_data-ltexts WHERE shbkz EQ wa_data-umskz AND spras EQ sy-langu AND koart EQ 'K'.
+    SELECT SINGLE text1
+             INTO wa_data-vtext
+             FROM t052u
+            WHERE spras = sy-langu
+              AND zterm = wa_data-zterm .
+
+    IF wa_data-prctr IS NOT INITIAL.
+      IF wa_data-shkzg = 'H'.
+        w_crbal = w_crbal + abs( wa_data-dmbtr ).
+        wa_data-dmbtr = - ( wa_data-dmbtr ).
+      ELSEIF wa_data-shkzg = 'S'.
+        w_drbal = w_drbal + abs( wa_data-dmbtr ).
+      ENDIF.
+
+      IF pbase IS INITIAL.    """"Pbase added by sairam on 10082022
+        wa_data-due = wa_data-bldat + wa_data-zbd1t. "WA_DATA-ZFBDT + WA_DATA-ZBD1T. " wa_data-zbd1t.
+        wa_data-duedate = wa_data-bldat.
+*    Report run date - (Baseline Date + Payment term days +1)
+
+        wa_data-due_days = p_date - wa_data-bldat."  ADDED BY NITAI ON 040916  WA_DATA-DUE.
+
+        w_days = wa_data-due_days.
+      ELSEIF pbase IS NOT INITIAL.
+        wa_data-due = wa_data-zfbdt + wa_data-zbd1t. "
+        wa_data-duedate = wa_data-zfbdt.
+        wa_data-due_days = p_date - wa_data-due.
+        w_days = wa_data-due_days.
+
+      ENDIF.   """"""End of Pbase added by sairam on 10082022
+
+*      w_days = ( p_date ) - ( wa_data-due + 1 ).
+*      IF w_days < 0.    """""""""""EQ c_days. Modified by sairam on 10082022
+      IF pbase IS INITIAL.   """"""""Pbase added by sairam on 10082022 added if condition
+        IF w_days EQ c_days.
+          w_days = 0.
+        ENDIF.
+      ENDIF.    """"""End of Pbase added by sairam on 10082022
+
+
+      IF w_days BETWEEN 0 AND int1.
+        wa_data-int1 = wa_data-dmbtr.
+      ELSEIF w_days BETWEEN int1 AND int2.
+        wa_data-int2 = wa_data-dmbtr.
+      ELSEIF w_days BETWEEN int2 AND int3.                  "60 AND 90.
+        wa_data-int3 = wa_data-dmbtr.
+      ELSEIF w_days BETWEEN int3 AND int4."90 AND 180.
+        wa_data-int4 = wa_data-dmbtr.
+      ELSEIF w_days BETWEEN int4 AND int5.                  "180 .
+        wa_data-int5 = wa_data-dmbtr.
+*      ELSEIF w_days BETWEEN int5 AND int6.                  "180 .
+*        wa_data-int6 = wa_data-dmbtr.
+*    ENDIF.
+*      ELSEIF w_days BETWEEN int6 AND int7.                  "180 .
+*        wa_data-int7 = wa_data-dmbtr.
+*    ENDIF.
+      ELSEIF w_days GT int5.          "raju                      "180 .
+        wa_data-int6 = wa_data-dmbtr.
+      ENDIF.
+      wa_data-due_amt = wa_data-int1 + wa_data-int2 + wa_data-int3 + wa_data-int4 + wa_data-int5 + wa_data-int6
+                        + wa_data-int7." + wa_data-int8.
+      wa_data-no_due = wa_data-dmbtr - wa_data-due_amt.
+
+*      wa_data-due_days = p_date - wa_data-budat.
+      IF  wa_data-due_days LT c_days.
+        wa_data-due_days = 0.
+      ENDIF.
+
+      MODIFY it_data FROM wa_data " INDEX sy-tabix
+             TRANSPORTING name1 zterm vtext dmbtr due duedate int1 int2
+                          due_days prctr int3 int4 int5 int6 int7" int8
+                          soldto soldto_name  due_amt no_due zuonr ltextb ltexts.
+    ENDIF.
+    CLEAR: wa_data.
+  ENDLOOP.
+
+  IF psummary EQ 'X'.
+    LOOP AT it_data INTO wa_data.
+      CLEAR: w_crbal, w_drbal.
+      IF wa_data-prctr IS NOT INITIAL.
+        IF wa_data-shkzg = 'H'.
+          w_crbal = w_crbal + abs( wa_data-dmbtr ).
+        ELSEIF wa_data-shkzg = 'S'.
+          w_drbal = w_drbal + abs( wa_data-dmbtr ).
+        ENDIF.
+        wa_temp-name1 = wa_data-name1.
+        wa_temp-ort01 = wa_data-ort01.
+        wa_temp-regio = wa_data-regio.
+        wa_temp-ktokk = wa_data-ktokk.
+        wa_temp-txt30 = wa_data-txt30.
+        wa_temp-bezei = wa_data-bezei.
+        wa_temp-lifnr = wa_data-lifnr.
+        wa_temp-tot_drbal = w_drbal.
+        wa_temp-tot_crbal = w_crbal.
+        wa_temp-no_due = wa_data-no_due.
+*****************************---->
+        IF wa_temp-no_due IS NOT INITIAL.
+          wa_temp-no_due = wa_data-dmbtr.
+        ENDIF.
+*****************************---->
+        wa_temp-tot_pay = ( wa_data-int1 + wa_data-int2 + wa_data-int3
+                            + wa_data-int4 + wa_data-int5 ).
+        wa_temp-int1 = wa_data-int1.
+        wa_temp-int2 = wa_data-int2.
+        wa_temp-int3 = wa_data-int3.
+        wa_temp-int4 = wa_data-int4.
+        wa_temp-int5 = wa_data-int5.
+        wa_temp-int6 = wa_data-int6.
+        wa_temp-int7 = wa_data-int7.
+        COLLECT wa_temp INTO it_temp.
+        CLEAR: wa_data.
+      ENDIF.
+    ENDLOOP.
+
+    LOOP AT it_temp INTO wa_temp.
+      wa_temp-tot_balan = wa_temp-tot_drbal - wa_temp-tot_crbal.
+      MODIFY it_temp FROM wa_temp TRANSPORTING tot_balan.
+    ENDLOOP.
+  ENDIF.
+
+  IF psummary EQ 'X'.
+
+    LOOP AT it_temp INTO wa_temp.
+
+      CLEAR: wa_temp-tot_crbal,
+             wa_temp-tot_drbal,
+             wa_temp-tot_balan.
+
+      IF wa_temp-int1 LE c_dmtbr.
+        ADD wa_temp-int1 TO wa_temp-tot_crbal.
+      ELSE.
+        ADD wa_temp-int1 TO wa_temp-tot_drbal.
+      ENDIF.
+
+      IF wa_temp-int2 LE c_dmtbr.
+        ADD wa_temp-int2 TO wa_temp-tot_crbal.
+      ELSE.
+        ADD wa_temp-int2 TO wa_temp-tot_drbal.
+      ENDIF.
+
+      IF wa_temp-int3 LE c_dmtbr.
+        ADD wa_temp-int3 TO wa_temp-tot_crbal.
+      ELSE.
+        ADD wa_temp-int3 TO wa_temp-tot_drbal.
+      ENDIF.
+
+      IF wa_temp-int4 LE c_dmtbr.
+        ADD wa_temp-int4 TO wa_temp-tot_crbal.
+      ELSE.
+        ADD wa_temp-int4 TO wa_temp-tot_drbal.
+      ENDIF.
+
+      IF wa_temp-int5 LE c_dmtbr.
+        ADD wa_temp-int5 TO wa_temp-tot_crbal.
+      ELSE.
+        ADD wa_temp-int5 TO wa_temp-tot_drbal.
+      ENDIF.
+
+      IF wa_temp-int6 LE c_dmtbr.
+        ADD wa_temp-int6 TO wa_temp-tot_crbal.
+      ELSE.
+        ADD wa_temp-int6 TO wa_temp-tot_drbal.
+      ENDIF.
+
+*            IF wa_temp-int7 LE c_dmtbr."RAJU"
+*        ADD wa_temp-int7 TO wa_temp-tot_crbal.
+*      ELSE.
+*        ADD wa_temp-int7 TO wa_temp-tot_drbal.
+*      ENDIF.
+
+      IF wa_temp-no_due LE c_dmtbr.
+        ADD wa_temp-no_due TO wa_temp-tot_crbal.
+      ELSE.
+        ADD wa_temp-no_due TO wa_temp-tot_drbal.
+      ENDIF.
+
+
+*      IF wa_temp-int8 LE c_dmtbr.
+*        ADD wa_temp-int8 TO wa_temp-tot_crbal.
+*      ELSE.
+*        ADD wa_temp-int8 TO wa_temp-tot_drbal.
+*      ENDIF.
+
+      wa_temp-tot_crbal = abs( wa_temp-tot_crbal ).
+      wa_temp-tot_balan = wa_temp-tot_drbal - wa_temp-tot_crbal.
+
+      MODIFY it_temp FROM wa_temp TRANSPORTING tot_crbal tot_drbal tot_balan.
+      CLEAR: wa_temp.
+
+    ENDLOOP.
+
+  ENDIF.
+******************************************************************************************************
+  LOOP AT it_faglflexa INTO wa_faglflexa.
+    READ TABLE it_data INTO wa_data WITH KEY belnr = wa_faglflexa-docnr
+                                             gjahr = wa_faglflexa-ryear
+                                             bukrs = wa_faglflexa-rbukrs
+                                             buzei = wa_faglflexa-buzei.
+    IF sy-subrc EQ 0.
+      wa_final-lifnr = wa_data-lifnr.
+      wa_final-belnr = wa_data-belnr.
+      wa_final-name1 = wa_data-name1.
+      wa_final-ort01 = wa_data-ort01.
+      wa_final-regio = wa_data-regio.
+      wa_final-ktokk = wa_data-ktokk.
+      wa_final-bldat = wa_data-bldat.
+      wa_final-budat = wa_data-budat.
+      wa_final-txt30 = wa_data-txt30.
+      wa_final-bezei = wa_data-bezei.
+      wa_final-shkzg = wa_data-shkzg.
+      wa_final-bukrs = wa_data-bukrs.
+      wa_final-blart = wa_data-blart.
+      wa_final-ltextb = wa_data-ltextb.
+      wa_final-ltexts = wa_data-ltexts.
+      wa_final-vtext = wa_data-vtext.
+      wa_final-werks = wa_data-werks.
+      wa_final-name1_p = wa_data-name1_p.
+      wa_final-tinno = wa_data-tinno.
+      wa_final-prctr = wa_faglflexa-prctr.
+      DATA : w_prctr TYPE prctr.
+
+      CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+        EXPORTING
+          input  = wa_final-prctr
+        IMPORTING
+          output = w_prctr.
+      wa_final-prctr = w_prctr.
+      wa_final-ltext = wa_data-ltext.
+      wa_final-due_days = wa_data-due_days.
+      wa_final-ebeln = wa_data-ebeln.
+      wa_final-xblnr = wa_data-xblnr.
+      wa_final-due_amt = wa_data-due_amt.
+      wa_final-umskz = wa_data-umskz.
+      wa_final-zterm = wa_data-zterm.
+      wa_final-due = wa_data-due.
+      wa_final-no_due = wa_data-no_due.
+      wa_final-ztag1 = wa_data-ztag1.
+      wa_final-zfbdt = wa_data-zfbdt.
+      wa_final-int1 = wa_data-int1.
+      wa_final-int2 = wa_data-int2.
+      wa_final-int3 = wa_data-int3.
+      wa_final-int4 = wa_data-int4.
+      wa_final-int5 = wa_data-int5.
+*      wa_final-int6 = wa_data-int6. " commented on 17.08.2022
+      wa_final-int7 = wa_data-int7.
+      IF wa_data-int5 IS INITIAL AND wa_data-int4 IS INITIAL
+                                 AND wa_data-int3 IS INITIAL
+                                 AND wa_data-int2 IS INITIAL
+                                 AND wa_data-int1 IS INITIAL.
+        wa_final-int6 = wa_faglflexa-hsl. " added on 17.08.2022
+      ELSE.
+        wa_final-int6 = wa_data-int6.
+      ENDIF.
+
+      IF wa_data-int1 IS NOT INITIAL.
+        wa_final-int1 = wa_faglflexa-hsl. " added on 17.08.2022
+      ENDIF.
+
+      IF wa_data-int2 IS NOT INITIAL.
+        wa_final-int2 = wa_faglflexa-hsl. " added on 17.08.2022
+      ENDIF.
+
+      IF wa_data-int3 IS NOT INITIAL.
+        wa_final-int3 = wa_faglflexa-hsl. " added on 17.08.2022
+      ENDIF.
+
+      IF wa_data-int4 IS NOT INITIAL.
+        wa_final-int4 = wa_faglflexa-hsl. " added on 17.08.2022
+      ENDIF.
+
+      IF wa_data-int5 IS NOT INITIAL.
+        wa_final-int5 = wa_faglflexa-hsl. " added on 17.08.2022
+      ENDIF.
+
+      IF wa_data-int6 IS NOT INITIAL.
+        wa_final-int6 = wa_faglflexa-hsl. " added on 17.08.2022
+      ENDIF.
+
+      IF wa_data-int7 IS NOT INITIAL.
+        wa_final-int7 = wa_faglflexa-hsl. " added on 17.08.2022
+      ENDIF.
+
+      IF wa_final-due_days EQ '0' OR wa_final-due_days LT '0'.
+        CLEAR:wa_final-int1,
+        wa_final-int2,
+        wa_final-int3,
+        wa_final-int4,
+        wa_final-int5,
+        wa_final-int6,
+        wa_final-int7.
+
+      ENDIF.
+
+
+      wa_final-dmbtr = wa_faglflexa-hsl.
+      IF wa_faglflexa-rwcur NE 'INR'.
+        wa_faglflexa-wsl = wa_faglflexa-wsl / 100.
+      ELSE.
+        wa_faglflexa-wsl = wa_faglflexa-wsl.
+      ENDIF.
+*      wa_faglflexa-wsl = wa_faglflexa-wsl / 100.
+      wa_final-wrbtr = wa_faglflexa-wsl.
+      wa_final-rwcur = wa_faglflexa-rwcur.
+      CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+        EXPORTING
+          input  = wa_final-lifnr
+        IMPORTING
+          output = wa_final-lifnr.
+
+      IF ( wa_final-no_due IS NOT INITIAL OR pbase IS INITIAL )
+         AND ( wa_final-due_days EQ '0' OR wa_final-due_days LT '0' ).
+        wa_final-no_due = wa_final-dmbtr.
+      ENDIF.
+
+      APPEND wa_final TO it_final.
+      CLEAR wa_final.
+    ENDIF.
+  ENDLOOP.
+***********************************************************************************************************
+
+ENDFORM.                    "get_data
+
+*&----------------------------------------------------------- ----------*
+*&      Form  FIELDCAT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+FORM fieldcat.
+
+  IF psummary EQ 'X'.
+
+    PERFORM enter_fieldcat USING : 'LIFNR'     'IT_TEMP' 'Vendor Code'        'Vendor Code',
+                                   'NAME1'     'IT_TEMP' 'Vendor Name'        'Vendor Name',
+                                   'KTOKK'     'IT_TEMP' 'Account Group'      'Account Group',
+                                   'TXT30'     'IT_TEMP' 'Account Group Name' 'Account Group Name',
+*                                   'BEZEI'     'IT_TEMP' 'Region Name'        'Region Name',
+                                   'TOT_DRBAL' 'IT_TEMP' 'Total Bal-DEBIT'    'Total Bal-DEBIT',
+                                   'TOT_CRBAL' 'IT_TEMP' 'Total Bal-CREDIT'   'Total Bal-CREDIT',
+                                   'NO_DUE'   'IT_TEMP'  'Not Due Amount'   'Not Due Amount',
+                                   'TOT_BALAN' 'IT_TEMP' 'Total Balance'      'Total Balance'.
+*                                   'TOT_PAY'   'IT_TEMP' 'Total Payments'     'Total Payments'.
+
+  ELSE.
+
+    PERFORM enter_fieldcat USING : 'LIFNR'    'IT_DATA' 'Vendor Code'        'Vendor Code',
+                                   'NAME1'    'IT_DATA' 'Vendor Name'        'Vendor Name',
+                                   'KTOKK'    'IT_TEMP' 'Account Group'      'Account Group',
+                                   'TXT30'    'IT_TEMP' 'Account Group Name' 'Account Group Name',
+                                   'WERKS'    'IT_DATA' 'Plant'              'Plant',
+                                   'NAME1_P'  'IT_DATA' 'Plant Text'         'Plant Text',
+                                   'BLDAT'    'IT_DATA' 'Document Date'      'Document Date',
+                                   'BUDAT'    'IT_DATA' 'Posting Date'       'Posting Date',
+                                   'BELNR'    'IT_DATA' 'Bill No'            'Bill No',
+                                   'SHKZG'    'IT_DATA' 'Debit/Credit Ind'   'Debit/Credit Ind',
+                                   'BLART'    'IT_DATA' 'Document type'      'Document type',
+                                   'LTEXTB'  'IT_DATA' 'Document type Text' 'Document type Text',
+                                   'TINNO'  'IT_DATA' 'TIN NO' 'TIN NO',
+                                   'DMBTR'    'IT_DATA' 'Amount in LC'       'Amount in LC',
+*                                   'WRBTR'    'IT_DATA' 'Amount in Doc Curr' 'Amount in Doc Curr',
+                                   'RWCUR'    'IT_DATA' 'Doc Curr' 'Doc Curr',
+                                   'ZTERM'    'IT_DATA' 'Payment Term'       'Payment Term',
+                                   'VTEXT'    'IT_DATA' 'Payment Term Text'       'Payment Term Text',
+*                                   'ZTAG1'    'IT_DATA' 'No. Of Days'        'No. Of Days',
+                                   'ZFBDT'    'IT_DATA' 'Baseline Date'      'Baseline Date',
+                                   'DUE'      'IT_DATA' 'DueDate'            'DueDate',
+                                   'UMSKZ'    'IT_DATA' 'Special G/L Ind'    'Special G/L Ind',
+                                   'LTEXTS'    'IT_DATA' 'Special G/L Ind Text'    'Special G/L Ind Text',
+                                   'XBLNR'    'IT_DATA' 'Ref Doc No'         'Ref Doc No',
+*                                   'DUE_AMT'  'IT_DATA' 'Due Amount'         'Due Amount',
+                                   'NO_DUE'   'IT_TEMP'  'Not Due Amount'   'Not Due Amount',
+                                   'EBELN'    'IT_DATA' 'Billing Doc.'       'Billing Doc.',
+                                   'DUE_DAYS' 'IT_DATA' 'No Of Due Days'            'No Of Due Days',
+                                   'PRCTR'    'IT_DATA' 'Profit Center'      'Profit Center',
+                                   'LTEXT'    'IT_DATA' 'Profit Center Name' 'Profit Center Name'.
+  ENDIF.
+
+  DATA: str  TYPE string,
+        str1 TYPE string.
+  IF psummary NE 'X'.
+
+    str1 = int1.
+    CONCATENATE '1' '-' str1 INTO str SEPARATED BY space.
+    PERFORM enter_fieldcat USING  'INT1'  'IT_FINAL' str str.
+    CLEAR: str, str1.
+
+    str = int1 + 1.
+    str1 = int2.
+    CONCATENATE str '-' str1 INTO str SEPARATED BY space.
+    PERFORM enter_fieldcat USING  'INT2'  'IT_FINAL' str str.
+    CLEAR: str, str1.
+
+    str = int2 + 1.
+    str1 = int3.
+    CONCATENATE str '-' str1 INTO str SEPARATED BY space.
+    PERFORM enter_fieldcat USING  'INT3'  'IT_FINAL' str str.
+    CLEAR: str, str1.
+
+    str = int3 + 1.
+    str1 = int4.
+    CONCATENATE str '-' str1 INTO str SEPARATED BY space.
+    PERFORM enter_fieldcat USING  'INT4'  'IT_FINAL' str str.
+    CLEAR: str, str1.
+    str = int4 + 1.
+    str1 = int5.
+    CONCATENATE str '-' str1 INTO str SEPARATED BY space.
+    PERFORM enter_fieldcat USING  'INT5'  'IT_FINAL' str str.
+    CLEAR: str, str1.
+
+*    str = int5 + 1.
+*    str1 = int6.
+*    CONCATENATE 'From' str 'to' str1 INTO str SEPARATED BY space.
+*    PERFORM enter_fieldcat USING  'INT6'  'IT_FINAL' str str.
+*    CLEAR: str, str1.
+
+*    str = int6 + 1.
+*    str1 = int7.
+*    CONCATENATE 'From' str 'to' str1 INTO str SEPARATED BY space.
+*    PERFORM enter_fieldcat USING  'INT7'  'IT_DATA' str str.
+*    CLEAR: str, str1.
+
+    str = int5.
+    CONCATENATE '>' str INTO str SEPARATED BY space.
+    PERFORM enter_fieldcat USING  'INT6'  'IT_FINAL' str str.
+    CLEAR: str, str1.
+  ELSE.
+*    DATA: str TYPE string,
+*        str1 TYPE string.
+    str1 = int1.
+    CONCATENATE '1' '-' str1 INTO str SEPARATED BY space.
+    PERFORM enter_fieldcat USING  'INT1'  'IT_TEMP' str str.
+    CLEAR: str, str1.
+
+    str = int1 + 1.
+    str1 = int2.
+    CONCATENATE str '-' str1 INTO str SEPARATED BY space.
+    PERFORM enter_fieldcat USING  'INT2'  'IT_TEMP' str str.
+    CLEAR: str, str1.
+
+    str = int2 + 1.
+    str1 = int3.
+    CONCATENATE str '-' str1 INTO str SEPARATED BY space.
+    PERFORM enter_fieldcat USING  'INT3'  'IT_TEMP' str str.
+    CLEAR: str, str1.
+
+    str = int3 + 1.
+    str1 = int4.
+    CONCATENATE str '-' str1 INTO str SEPARATED BY space.
+    PERFORM enter_fieldcat USING  'INT4'  'IT_TEMP' str str.
+    CLEAR: str, str1.
+    str = int4 + 1.
+    str1 = int5.
+    CONCATENATE str '-' str1 INTO str SEPARATED BY space.
+    PERFORM enter_fieldcat USING  'INT5'  'IT_TEMP' str str.
+    CLEAR: str, str1.
+*
+*    str = int5 + 1.
+*    str1 = int6.
+*    CONCATENATE 'From' str 'to' str1 INTO str SEPARATED BY space.
+*    PERFORM enter_fieldcat USING  'INT6'  'IT_TEMP' str str.
+*    CLEAR: str, str1.
+
+*    str = int6 + 1.
+*    str1 = int7.
+*    CONCATENATE 'From' str 'to' str1 INTO str SEPARATED BY space.
+*    PERFORM enter_fieldcat USING  'INT7'  'IT_TEMP' str str.
+*    CLEAR: str, str1.
+    str = int5.
+*    STR1 = INT6.
+    CONCATENATE '>' str INTO str SEPARATED BY space.
+    PERFORM enter_fieldcat USING  'INT6'  'IT_TEMP' str str.
+    CLEAR: str, str1.
+
+  ENDIF.
+
+*  ENDIF.
+ENDFORM.                    "FIELDCAT
+*&---------------------------------------------------------------------*
+*&      Form  ENTER_FIELDCAT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+FORM enter_fieldcat  USING    VALUE(p_0112)
+      VALUE(p_0113)
+      VALUE(p_0114)
+      VALUE(p_0115).
+*      value(p_0116).
+*      value(p_0117).
+*
+  CLEAR:wa_fieldcat.
+
+  wa_fieldcat-fieldname = p_0112.
+  wa_fieldcat-tabname = p_0113.
+  wa_fieldcat-seltext_l = p_0114.
+  wa_fieldcat-seltext_m = p_0115.
+  APPEND wa_fieldcat TO fieldcat.
+ENDFORM.                    " ENTER_FIELDCAT
+
+
+*&---------------------------------------------------------------------*
+*&      Form  display_alv
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+FORM display_alv.
+  gs_layout-zebra        = 'X'.
+  gs_layout-colwidth_optimize = 'X'.
+
+  IF psummary EQ 'X'.
+    CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+      EXPORTING
+        i_callback_program     = sy-repid
+        i_callback_top_of_page = 'TOP-OF-PAGE'
+        is_layout              = gs_layout
+        it_fieldcat            = fieldcat
+        i_save                 = g_save
+        is_variant             = g_variant
+      TABLES
+        t_outtab               = it_temp[]
+* EXCEPTIONS
+*       PROGRAM_ERROR          = 1
+*       OTHERS                 = 2
+      .
+    IF sy-subrc <> 0.
+* MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+*         WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+    ENDIF.
+  ELSE.
+    CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+      EXPORTING
+        i_callback_program     = sy-repid
+        i_callback_top_of_page = 'TOP-OF-PAGE'
+        is_layout              = gs_layout
+        it_fieldcat            = fieldcat
+        i_save                 = g_save
+        is_variant             = g_variant
+      TABLES
+        t_outtab               = it_final[]
+* EXCEPTIONS
+*       PROGRAM_ERROR          = 1
+*       OTHERS                 = 2
+      .
+    IF sy-subrc <> 0.
+* MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+*         WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+    ENDIF.
+  ENDIF.
+ENDFORM.                    "display_alv
+*&---------------------------------------------------------------------*
+*&      Form  initialize_variant
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+FORM initialize_variant .
+
+  g_save = 'A'.
+  CLEAR g_variant.
+  g_variant-report = sy-repid.
+  gx_variant = g_variant.
+  CALL FUNCTION 'REUSE_ALV_VARIANT_DEFAULT_GET'
+    EXPORTING
+      i_save     = g_save
+    CHANGING
+      cs_variant = gx_variant
+    EXCEPTIONS
+      not_found  = 2.
+  IF sy-subrc = 0.
+*    p_vari = gx_variant-variant.
+  ENDIF.
+  layout-get_selinfos = 'X'.
+  layout-group_change_edit = 'X'.
+
+  alv_print-no_print_selinfos  = 'X'.
+  alv_print-no_coverpage       = 'X'.
+  alv_print-no_print_listinfos = 'X'.
+
+  alv_detail_func = 'REUSE_ALV_LIST_DISPLAY'.
+
+ENDFORM.                    " initialize_variant
+*&----------------------------------------------------------
+*&      Form  top-of-page
+*&----------------------------------------------------------
+*       text
+*-----------------------------------------------------------
+*  -->  p1        text
+*  <--  p2        text
+*-----------------------------------------------------------
+FORM top-of-page.
+
+*ALV Header declarations
+  DATA: t_header      TYPE slis_t_listheader,
+        wa_header     TYPE slis_listheader,
+        t_line        LIKE wa_header-info,
+        ld_lines      TYPE i,
+        ld_linesc(10) TYPE c,
+        vbutxt(60),
+        wtext(60),
+        ntext(60),
+        text(60) ,
+        p_text(5).                                          "Added By Abhishek on 15.07.2011*****
+
+  SELECT SINGLE butxt
+           INTO vbutxt
+           FROM t001
+  WHERE bukrs EQ pbukrs.
+
+  SELECT SINGLE ort01
+             INTO wtext
+  FROM t001w.
+
+  SELECT SINGLE werks
+         INTO p_text
+  FROM t001w.
+*
+  SELECT SINGLE name1
+           INTO ntext
+  FROM t001w.
+
+
+  ntext = ''.
+  CONCATENATE ntext wtext INTO text SEPARATED BY space .
+
+  wa_header-key = 'Company Name:'.
+  wa_header-typ  = 'S'.
+  wa_header-info = vbutxt.
+
+  APPEND wa_header TO t_header.
+  CLEAR wa_header.
+
+  DATA: data1(4) ,
+        data2(2),
+        data3(2),
+        DATA(10).
+
+  data1 = p_date+0(4).
+  data2 = p_date+4(2).
+  data3 = p_date+6(2).
+
+  CONCATENATE data3'.' data2'.' data1 INTO data.
+
+  wa_header-key = 'Report Name'.
+  wa_header-typ  = 'S'.
+  wa_header-info = 'Vendor Ageing Analysis Report'.
+
+  APPEND wa_header TO t_header.
+  CLEAR wa_header.
+  wa_header-key = 'Report Date :'.
+
+  wa_header-typ  = 'S'.
+  wa_header-info = data.
+
+  APPEND wa_header TO t_header.
+
+  CLEAR : wa_header.
+
+  CALL FUNCTION 'REUSE_ALV_COMMENTARY_WRITE'
+    EXPORTING
+      it_list_commentary = t_header.
+
+ENDFORM.                    " top-of-page
