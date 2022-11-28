@@ -1,0 +1,60 @@
+*&---------------------------------------------------------------------*
+*& Report ZREAD_TEXT
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT ZREAD_TEXT.
+TYPES: BEGIN OF TY_STXL,
+         TDNAME TYPE STXL-TDNAME,
+         CLUSTR TYPE STXL-CLUSTR,
+         CLUSTD TYPE STXL-CLUSTD,
+       END OF TY_STXL.
+DATA:  T_STXL TYPE STANDARD TABLE OF TY_STXL.
+FIELD-SYMBOLS: <STXL> TYPE TY_STXL.
+* compressed text data without text name
+TYPES: BEGIN OF TY_STXL_RAW,
+         CLUSTR TYPE STXL-CLUSTR,
+         CLUSTD TYPE STXL-CLUSTD,
+       END OF TY_STXL_RAW.
+DATA:  T_STXL_RAW TYPE STANDARD TABLE OF TY_STXL_RAW.
+DATA:  W_STXL_RAW TYPE TY_STXL_RAW.
+* decompressed text
+DATA:  T_TLINE TYPE STANDARD TABLE OF TLINE.
+FIELD-SYMBOLS: <TLINE> TYPE TLINE.
+DATA: T_STXH TYPE STANDARD TABLE OF STXH,
+      W_STXH TYPE STXH.
+
+PARAMETERS P_OBJNAM TYPE CHAR70.
+SELECT TDNAME TDOBJECT TDID
+   FROM STXH
+     INTO CORRESPONDING FIELDS OF TABLE T_STXH
+     WHERE TDNAME = P_OBJNAM AND
+           TDID = 'B01' AND
+           TDOBJECT = 'EBAN' AND
+           TDSPRAS = SY-LANGU.
+*AND THEN
+* select compressed text lines in blocks of 3000 (adjustable)
+SELECT TDNAME CLUSTR CLUSTD
+        INTO TABLE T_STXL
+        FROM STXL
+        PACKAGE SIZE 3000
+        FOR ALL ENTRIES IN T_STXH "WITH APPLICATION DATA AND TDNAME
+        WHERE RELID    = 'TX'          "standard text
+          AND TDOBJECT = T_STXH-TDOBJECT
+          AND TDNAME   = T_STXH-TDNAME
+          AND TDID     = T_STXH-TDID
+          AND TDSPRAS  = SY-LANGU.
+  LOOP AT T_STXL ASSIGNING <STXL>.
+*   decompress text
+    CLEAR: T_STXL_RAW[], T_TLINE[].
+    W_STXL_RAW-CLUSTR = <STXL>-CLUSTR.
+    W_STXL_RAW-CLUSTD = <STXL>-CLUSTD.
+    APPEND W_STXL_RAW TO T_STXL_RAW.
+    IMPORT TLINE = T_TLINE FROM INTERNAL TABLE T_STXL_RAW.
+*  access text lines for further processing
+    LOOP AT T_TLINE ASSIGNING <TLINE>.
+      WRITE: / <TLINE>-TDLINE.
+    ENDLOOP.
+  ENDLOOP.
+  FREE T_STXL.
+ENDSELECT.
