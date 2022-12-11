@@ -1,0 +1,74 @@
+Here is an ABAP code that does this. Please ignore a simple parsing of responses.Also instead of using MYSAPSSO2 cookie I get a re-entrace ticket which is almost same thing as MYSAPSSO2 cookie.
+
+  METHOD logon_via_sso.
+* We use mobileBI service to log on to BO server
+* Only this service supports SAP SSO cookies as a form of
+* authentication. After successful logon we convert session
+* to security token required with service /biprws/logon/token
+    DATA: lv_ticket TYPE string.
+
+
+    CALL FUNCTION 'CREATE_RFC_REENTRANCE_TICKET'
+      IMPORTING
+        ticket = lv_ticket
+      EXCEPTIONS
+        OTHERS = 1.
+
+
+    IF sy-subrc <> 0.
+* All service calls will fail
+      RETURN.
+    ENDIF.
+
+
+* Logon on using mobileBI service
+    DATA(lv_service) = |MobileBIService/MessageHandlerServlet?message=CredentialsMessage&requestSrc=ipad&data=<logon%20logonViaSSO="true"/>|.
+    cl_http_client=>create_by_url( EXPORTING url = |{ get_app_url( ) }/{ lv_service }|
+                                   IMPORTING client = DATA(lo_con) ).
+    DATA(lo_client) = NEW cl_rest_http_client( lo_con ).
+
+
+    lo_client->if_rest_client~set_request_header( iv_name = 'MYSAPSSO2' iv_value = lv_ticket ).
+    lo_client->if_rest_client~get( ).
+
+
+    IF lo_client->if_rest_client~get_status( ) NE 200.
+      RETURN.
+    ENDIF.
+
+
+    DATA(lv_response) = lo_client->if_rest_client~get_response_entity( )->get_string_data( ).
+    lo_client->if_rest_client~close( ).
+    SPLIT lv_response AT 'logonToken=' INTO DATA(lv_bhole) DATA(lv_session).
+    SHIFT lv_session LEFT DELETING LEADING '"'.
+    SPLIT lv_session AT '"' INTO lv_session lv_bhole.
+
+
+    cl_http_client=>create_by_url( EXPORTING url = |{ get_rest_url( ) }/biprws/logon/token|
+                                   IMPORTING client = lo_con ).
+    lo_client = NEW cl_rest_http_client( lo_con ).
+
+
+* Get security token
+    TRY.
+        DATA(lo_entity) = lo_client->if_rest_client~create_request_entity( ).
+        lo_entity->set_header_field( iv_name = 'Accept' iv_value = 'application/json' ).
+        lo_entity->set_content_type( 'application/json' ).
+        lo_entity->set_string_data( |\{"tokenType":"token","logonToken":"{ lv_session }"\}| ).
+        lo_client->if_rest_client~post( lo_entity ).
+
+
+        IF lo_client->if_rest_client~get_status( ) EQ 200.
+          SPLIT lo_client->if_rest_client~get_response_entity( )->get_string_data( ) AT ':' INTO DATA(lv_start) mv_token.
+          SHIFT mv_token RIGHT DELETING TRAILING '}'.
+          SHIFT mv_token LEFT DELETING LEADING space.
+        ELSE.
+          RETURN.
+        ENDIF.
+      CATCH cx_rest_client_exception.
+        RETURN.
+    ENDTRY.
+    lo_client->if_rest_client~close( ).
+
+
+  ENDMETHOD.
