@@ -1,5 +1,12 @@
-Here is an ABAP code that does this. Please ignore a simple parsing of responses.Also instead of using MYSAPSSO2 cookie I get a re-entrace ticket which is almost same thing as MYSAPSSO2 cookie.
+I'm a bit lost here. What is your intention. If it is only about identification of the user session, you can create your own token and send it to the backend. 
+This even will allow you to create these identifiers at the granularity you need.
+The mysapsso2 cookie is NOT bound to a session and therefor does not match your description. 
+The same cookie will be used for all logins from one pc to the backend within one browser instance. 
+This implies, if you have two browser instances you will also get two MySAPSSO2 cookies even if the user is working on the same PC.
 
+Here is an ABAP code that does this. Please ignore a simple parsing of responses
+.Also instead of using MYSAPSSO2 cookie I get a re-entrace ticket which is almost same thing as MYSAPSSO2 cookie.
+_______________________________________________________________________________________________________________
   METHOD logon_via_sso.
 * We use mobileBI service to log on to BO server
 * Only this service supports SAP SSO cookies as a form of
