@@ -1,5 +1,8 @@
 FTI_FISCAL_YEAR_MONTH_GET -- capture FY month
  FI_PERIOD_DETERMINE      -- capture the FY month
+ DATE_TO_PERIOD_CONVERT
+ /IBS/RB_FI_GET_FISCAL_YEAR_VAR --> get the fiscal year varaint using comapny code
+ GM_GET_FISCAL_YEAR  --> get fiscal year
  SLIM_GET_QUARTERLY_PERIODS
   HR_99S_GET_DATES_QUARTER
   HR_E_GET_FISC_YEAR_DATES
