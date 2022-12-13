@@ -1,0 +1,139 @@
+*&---------------------------------------------------------------------*
+*& Report  ZMC_COFILES
+*&
+*&---------------------------------------------------------------------*
+*&
+*&
+*&---------------------------------------------------------------------*
+REPORT  zmc_cofiles.
+CONSTANTS:c_data_files_path  TYPE string   VALUE 'data',
+          c_co_files_path    TYPE string   VALUE 'cofiles',
+          c_request_released TYPE c        VALUE 'R',
+          c_co_file_prefix   TYPE c        VALUE 'K',
+          c_data_file_prefix TYPE c        VALUE 'R',
+          c_execute_command  TYPE sy-ucomm VALUE 'ONLI',
+          c_dot              TYPE c        VALUE '.',
+          c_slash_win        TYPE c        VALUE '\',
+          c_slash_lin        TYPE c        VALUE '/'.
+DATA:gv_dir_trans TYPE char255.
+PARAMETERS:p_ot TYPE e070-trkorr DEFAULT 'XXXKYYYYYY',
+           p_out TYPE string DEFAULT 'C:\temp' LOWER CASE.
+ 
+INITIALIZATION.
+  CALL 'C_SAPGPARAM' ID 'NAME' FIELD 'DIR_TRANS' ID 'VALUE' FIELD gv_dir_trans.
+ 
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_ot.
+  CALL FUNCTION 'TR_F4_REQUESTS'
+    EXPORTING
+      iv_trstatus         = c_request_released
+    IMPORTING
+      ev_selected_request = p_ot.
+ 
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_out.
+  DATA:lv_selected_folder TYPE string.
+  CALL METHOD cl_gui_frontend_services=>directory_browse
+    CHANGING
+      selected_folder      = lv_selected_folder
+    EXCEPTIONS
+      cntl_error           = 1
+      error_no_gui         = 2
+      not_supported_by_gui = 3
+      OTHERS               = 4.
+  IF sy-subrc <> 0.
+    MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+               WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+  ENDIF.
+  p_out = lv_selected_folder.
+ 
+AT SELECTION-SCREEN.
+  IF sy-ucomm = c_execute_command.
+    PERFORM check_status.
+    PERFORM check_directory.
+  ENDIF.
+ 
+START-OF-SELECTION.
+  PERFORM download USING c_co_file_prefix.
+  PERFORM download USING c_data_file_prefix.
+  PERFORM show_msg.
+*&---------------------------------------------------------------------*
+*&      Form  check_directory
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+FORM check_directory.
+  DATA: lv_result TYPE c,
+        lv_directory TYPE string.
+  lv_directory = p_out.
+  CALL METHOD cl_gui_frontend_services=>directory_exist
+    EXPORTING
+      directory            = lv_directory
+    RECEIVING
+      result               = lv_result
+    EXCEPTIONS
+      cntl_error           = 1
+      error_no_gui         = 2
+      wrong_parameter      = 3
+      not_supported_by_gui = 4
+      OTHERS               = 5.
+  IF sy-subrc <> 0.
+    MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+               WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+  ENDIF.
+  IF lv_result IS INITIAL.
+    MESSAGE e398(00) WITH text-001."The output directory does not exist!
+  ENDIF.
+ENDFORM.                    "check_directory
+*&---------------------------------------------------------------------*
+*&      Form  check_status
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+FORM check_status.
+  DATA:ls_e070  TYPE e070 .
+  SELECT SINGLE * INTO ls_e070  FROM e070  WHERE trkorr = p_ot.
+  IF sy-subrc = 0.
+    IF ls_e070-trstatus NE c_request_released.
+      MESSAGE e398(00) WITH text-002."The TR must be released!
+    ENDIF.
+  ELSE.
+    MESSAGE e398(00) WITH text-003."The TR does not exist!
+  ENDIF.
+ENDFORM.                    "check_status
+*&---------------------------------------------------------------------*
+*&      Form  show_msg
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+FORM show_msg.
+  MESSAGE s398(00) WITH text-004."Files downloaded successfully!
+ENDFORM.                    "show_msg
+*&---------------------------------------------------------------------*
+*&      Form  download
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+FORM download USING pv_type TYPE c.
+  DATA:lv_path LIKE sapb-sappfad,
+       lv_targetpath LIKE sapb-sappfad,
+       lv_ot_filename TYPE string.
+  CONCATENATE pv_type p_ot+4(6) c_dot p_ot(3) INTO lv_ot_filename.
+  CASE pv_type.
+    WHEN c_co_file_prefix.
+      CONCATENATE gv_dir_trans c_slash_lin c_co_files_path c_slash_lin INTO lv_path.
+    WHEN c_data_file_prefix.
+      CONCATENATE gv_dir_trans c_slash_lin c_data_files_path c_slash_lin INTO lv_path.
+  ENDCASE.
+  CONCATENATE lv_path lv_ot_filename INTO lv_path.
+  CONCATENATE p_out c_slash_win p_ot c_slash_win lv_ot_filename INTO lv_targetpath.
+  CALL FUNCTION 'ARCHIVFILE_SERVER_TO_CLIENT'
+    EXPORTING
+      path       = lv_path
+      targetpath = lv_targetpath
+    EXCEPTIONS
+      error_file = 1
+      OTHERS     = 2.
+  IF sy-subrc <> 0.
+    MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+            WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+  ENDIF.
+ENDFORM.                    "download
