@@ -1,0 +1,43 @@
+METHOD dms_show.
+    DATA ls_draw TYPE draw.
+    DATA lt_rowid TYPE lvc_t_row.
+    DATA ls_rowid TYPE lvc_s_row.
+    CLEAR gs_outtab.
+    g_grid->get_selected_rows( IMPORTING et_index_rows = lt_rowid ).
+    DATA(lv_len) = lines( lt_rowid ).
+    IF lv_len > 1 .
+      MESSAGE 'Please select only one row' TYPE 'I'
+      DISPLAY LIKE 'E'.
+      LEAVE TO SCREEN '102'.
+    ELSEIF lv_len IS INITIAL.
+      MESSAGE 'Please select atleast one row' TYPE 'I'
+      DISPLAY LIKE 'E'.
+      LEAVE TO SCREEN '102'.
+    ENDIF.
+    READ TABLE lt_rowid INTO ls_rowid INDEX 1.
+    READ TABLE gt_outtab INTO gs_outtab INDEX ls_rowid-index.
+    IF sy-subrc EQ 0.
+      ls_draw-doknr = gs_outtab-doknr.
+      ls_draw-doknr = |{ gs_outtab-doknr ALPHA = IN }|.
+      ls_draw-dokvr = gs_outtab-dokvr.
+      ls_draw-dokar = gs_outtab-dokar.
+      ls_draw-doktl = gs_outtab-doktl.
+      IF NOT ls_draw-doknr IS INITIAL.
+        CALL FUNCTION 'DOCUMENT_SHOW_DIRECT'
+          EXPORTING
+            dokar       = ls_draw-dokar
+            doknr       = ls_draw-doknr
+            dokteil     = ls_draw-doktl
+            dokvr       = ls_draw-dokvr
+          EXCEPTIONS
+            not_found   = 1
+            no_auth     = 2
+            no_original = 3.
+        IF sy-subrc NE 0.
+          MESSAGE 'Error in display the DMS' TYPE 'I'
+          DISPLAY LIKE 'E'.
+          LEAVE TO SCREEN '102'.
+        ENDIF.
+      ENDIF.
+    ENDIF.
+  ENDMETHOD.
