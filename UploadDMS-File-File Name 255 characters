@@ -1,0 +1,265 @@
+METHOD upload_dms.
+    DATA lv_drnno TYPE zdms_drnno.
+    DATA: file_name         TYPE draw-filep.
+    DATA lt_tdwp TYPE TABLE OF tdwp.
+    DATA v_wsappl TYPE draw-dappl.
+    DATA: ls_files          TYPE bapi_doc_files2.
+    DATA: ls_documentdata   TYPE bapi_doc_draw2.
+    DATA: it_files          TYPE TABLE OF bapi_doc_files2.
+    DATA: wa_return         TYPE bapiret2.
+    DATA: v_documentnumber  TYPE bapi_doc_aux-docnumber.
+    DATA: v_documentdata    TYPE bapi_doc_draw2.
+    DATA: v_documentdatax   TYPE bapi_doc_drawx2.
+    DATA: wa_objectlinks    TYPE bapi_doc_drad.
+    DATA: it_objectlinks    TYPE TABLE OF bapi_doc_drad.
+    DATA: v_objkey          TYPE drad-objky.
+    DATA: v_doknr           TYPE drad-doknr.
+    DATA lt_file_table TYPE TABLE OF sdokpath.
+    DATA ls_file_table TYPE sdokpath.
+    DATA: v_documenttype    TYPE bapi_doc_aux-doctype.
+    DATA: v_documentnum     TYPE bapi_doc_aux-docnumber.
+    DATA: v_documentpart    TYPE bapi_doc_aux-docpart.
+    DATA: v_documentversion TYPE bapi_doc_aux-docversion.
+*    DATA: v_documentdata    TYPE bapi_doc_draw2.
+*    DATA: v_documentdatax   TYPE bapi_doc_drawx2.
+    DATA ref_grid TYPE REF TO cl_gui_alv_grid.
+    DATA lt_roid TYPE lvc_t_roid.
+*    IF ref_grid IS INITIAL.
+*      CALL FUNCTION 'GET_GLOBALS_FROM_SLVC_FULLSCR'
+*        IMPORTING
+*          e_grid = ref_grid.
+*    ENDIF.
+    ref_grid = gr_grid.
+    IF ref_grid IS BOUND.
+      ref_grid->get_selected_rows( IMPORTING et_row_no = lt_roid ).
+    ENDIF.
+    DATA(lv_len) = lines( lt_roid ).
+    IF lv_len > 1 .
+      MESSAGE 'Please select only one row' TYPE 'I'
+      DISPLAY LIKE 'E'.
+      LEAVE TO SCREEN '102'.
+    ELSEIF lv_len IS INITIAL.
+      MESSAGE 'Please select atleast one row' TYPE 'I'
+      DISPLAY LIKE 'E'.
+      LEAVE TO SCREEN '102'.
+    ENDIF.
+    READ TABLE lt_roid INTO DATA(ls_roid) INDEX 1.
+    CLEAR gs_zdmsdrf.
+    " always one DRN_no generate to multiple records
+    CLEAR gs_outtab.
+    READ TABLE gt_outtab INTO gs_outtab INDEX ls_roid-row_id.
+    IF sy-subrc EQ 0.
+      DO 5 TIMES.
+        SELECT SINGLE drn_no
+               FROM zdms_drf
+               INTO lv_drnno
+               WHERE drn_no = gs_outtab-drn_no.
+        IF sy-subrc EQ 0.
+          EXIT.
+        ENDIF.
+      ENDDO.
+      IF lv_drnno IS INITIAL.
+        MESSAGE 'DRN No is required for DMS' TYPE 'I'
+        DISPLAY LIKE 'E'.
+        LEAVE TO SCREEN '102'.
+      ELSE.
+* get the dms document number based on acounting document key if exist in drad
+        v_objkey = lv_drnno.
+        SELECT SINGLE doknr INTO v_doknr FROM drad
+               WHERE objky EQ v_objkey.
+        IF v_doknr IS INITIAL.
+
+          " allowing up to 255 chars
+          CALL FUNCTION 'TMP_GUI_FILE_OPEN_DIALOG'
+            EXPORTING
+              window_title = 'File Upload'
+*             DEFAULT_EXTENSION       =
+*             DEFAULT_FILENAME        =
+*             FILE_FILTER  =
+*             INIT_DIRECTORY          =
+*             MULTISELECTION          =
+*         IMPORTING
+*             RC           =
+            TABLES
+              file_table   = lt_file_table
+            EXCEPTIONS
+              cntl_error   = 1
+              OTHERS       = 2.
+          IF sy-subrc <> 0.
+* Implement suitable error handling here
+          ELSE.
+            READ TABLE lt_file_table INTO ls_file_table INDEX 1.
+            IF sy-subrc EQ 0.
+              file_name = ls_file_table-pathname.
+            ENDIF.
+          ENDIF.
+          IF NOT file_name IS INITIAL.
+
+            CALL FUNCTION 'CV120_DOC_GET_APPL'
+              EXPORTING
+*               PF_DIALOG =
+*               PF_DISPLAY       =
+                pf_file   = file_name
+*               PF_TYPDT  =
+              IMPORTING
+                pfx_dappl = v_wsappl "type TDWE-TYPDT
+              TABLES
+                ptx_tdwp  = lt_tdwp.
+
+            ls_files-storagecategory = 'ZFI'. "'DMS_C1_ST'.
+            ls_files-docfile         = file_name.
+            ls_files-wsapplication   = v_wsappl. "'TXT'.
+            APPEND ls_files TO it_files.
+            CLEAR: ls_files, v_wsappl.
+
+            ls_documentdata-documenttype    = 'ZFI'.
+            ls_documentdata-documentversion = '00'.
+            ls_documentdata-documentpart    = '000'.
+            ls_documentdata-description     = 'DMS-DRF'.
+            ls_documentdata-username        = sy-uname.
+            ls_documentdata-datacarrier1    = 'ZFI'.
+
+*            wa_objectlinks-objecttype = 'BKPF'.
+*            wa_objectlinks-objectkey  = v_objkey.
+*            APPEND wa_objectlinks TO it_objectlinks.
+            CLEAR: wa_objectlinks, v_objkey.
+
+            CALL FUNCTION 'BAPI_DOCUMENT_CREATE2'
+              EXPORTING
+                documentdata   = ls_documentdata
+              IMPORTING
+                documentnumber = v_documentnumber
+                return         = wa_return
+              TABLES
+                objectlinks    = it_objectlinks
+                documentfiles  = it_files.
+            IF wa_return-type NE 'E'.
+              CALL FUNCTION 'BAPI_TRANSACTION_COMMIT'
+                EXPORTING
+                  wait = 'X'.
+              CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+                EXPORTING
+                  input  = v_documentnumber
+                IMPORTING
+                  output = v_documentnumber.
+*              v_doknr = v_documentnumber.
+*              v_doknr = |{ v_doknr ALPHA = OUT }|.
+
+              UPDATE zdms_drf SET doknr = v_documentnumber
+                                  dokar = ls_documentdata-documenttype
+                                  dokvr = ls_documentdata-documentversion
+                                  doktl = ls_documentdata-documentpart
+                              WHERE drn_no = gs_outtab-drn_no.
+              IF sy-subrc EQ 0.
+                COMMIT WORK.
+*                gv_dms = 'X'.
+              ENDIF.
+              LOOP AT gt_outtab ASSIGNING <gs_outtab> WHERE drn_no = gs_outtab-drn_no.
+                <gs_outtab>-doknr = v_documentnumber.
+                <gs_outtab>-doknr = |{ <gs_outtab>-doknr ALPHA = OUT }|.
+                <gs_outtab>-dokar = ls_documentdata-documenttype.
+                <gs_outtab>-dokvr = ls_documentdata-documentversion.
+                <gs_outtab>-doktl = ls_documentdata-documentpart.
+              ENDLOOP.
+*            refresh_grid( g_grid ).
+              MESSAGE 'DMS Created Successfully' TYPE 'I'
+              DISPLAY LIKE 'S'.
+              cl_gui_cfw=>flush( ).
+              refresh_grid( g_grid ).
+              LEAVE TO SCREEN '102'.
+            ELSE.
+              CALL FUNCTION 'BAPI_TRANSACTION_ROLLBACK'.
+*            wa_out1-remarks = wa_return-message.
+            ENDIF.
+          ENDIF.
+        ELSEIF NOT v_doknr EQ 0.
+          v_doknr = |{ v_doknr ALPHA = IN }|.
+          " allowing up to 255 chars
+          CALL FUNCTION 'TMP_GUI_FILE_OPEN_DIALOG'
+            EXPORTING
+              window_title = 'File Upload'
+*             DEFAULT_EXTENSION       =
+*             DEFAULT_FILENAME        =
+*             FILE_FILTER  =
+*             INIT_DIRECTORY          =
+*             MULTISELECTION          =
+*         IMPORTING
+*             RC           =
+            TABLES
+              file_table   = lt_file_table
+            EXCEPTIONS
+              cntl_error   = 1
+              OTHERS       = 2.
+          IF sy-subrc <> 0.
+* Implement suitable error handling here
+          ELSE.
+            READ TABLE lt_file_table INTO ls_file_table INDEX 1.
+            IF sy-subrc EQ 0.
+              file_name = ls_file_table-pathname.
+            ENDIF.
+          ENDIF.
+          IF NOT file_name IS INITIAL.
+
+            CALL FUNCTION 'CV120_DOC_GET_APPL'
+              EXPORTING
+*               PF_DIALOG =
+*               PF_DISPLAY       =
+                pf_file   = file_name
+*               PF_TYPDT  =
+              IMPORTING
+                pfx_dappl = v_wsappl "type TDWE-TYPDT
+              TABLES
+                ptx_tdwp  = lt_tdwp.
+
+            ls_files-storagecategory = 'ZFI'. "'DMS_C1_ST'.
+            ls_files-docfile         = file_name.
+            ls_files-wsapplication   = v_wsappl. "'TXT'.
+            APPEND ls_files TO it_files.
+            CLEAR: ls_files, v_wsappl.
+
+            v_documenttype  = 'ZFI'.
+            v_documentversion = '00'.
+            v_documentpart     = '000'.
+            v_documentnum     = v_doknr.
+
+            REFRESH it_objectlinks.
+*            CLEAR wa_objectlinks.
+*            wa_objectlinks-objecttype = 'BKPF'.
+*            wa_objectlinks-objectkey  = v_objkey.
+*            APPEND wa_objectlinks TO it_objectlinks.
+            CLEAR: wa_objectlinks, v_objkey.
+
+            CALL FUNCTION 'BAPI_DOCUMENT_CHANGE2'
+              EXPORTING
+                documenttype    = v_documenttype
+                documentnumber  = v_documentnum
+                documentpart    = v_documentpart
+                documentversion = v_documentversion
+                documentdata    = v_documentdata
+                documentdatax   = v_documentdatax
+              IMPORTING
+                return          = wa_return
+              TABLES
+                objectlinks     = it_objectlinks
+                documentfiles   = it_files.
+            IF wa_return-type NE 'E'.
+              CALL FUNCTION 'BAPI_TRANSACTION_COMMIT'
+                EXPORTING
+                  wait = 'X'.
+              CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+                EXPORTING
+                  input  = v_documentnum
+                IMPORTING
+                  output = v_documentnum.
+              CLEAR: it_files, it_objectlinks, wa_return.
+*            refresh_grid( g_grid ).
+            ELSE.
+              CALL FUNCTION 'BAPI_TRANSACTION_ROLLBACK'.
+*            wa_out1-remarks = wa_return-message.
+            ENDIF.
+          ENDIF.
+
+        ENDIF.
+      ENDIF.
+    ENDIF.
+  ENDMETHOD.
