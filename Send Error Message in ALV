@@ -1,0 +1,19 @@
+    ref_grid = gr_grid.
+    IF ref_grid IS BOUND.
+      ref_grid->get_selected_rows( IMPORTING et_row_no = lt_roid ).
+    ENDIF.
+    DATA(lv_len) = lines( lt_roid ).
+    IF lv_len > 1 .
+      MESSAGE 'Please select only one row' TYPE 'I'
+      DISPLAY LIKE 'E'.
+      LEAVE TO SCREEN '102'.
+    ELSEIF lv_len IS INITIAL.
+      MESSAGE 'Please select atleast one row' TYPE 'I'
+      DISPLAY LIKE 'E'.
+      LEAVE TO SCREEN '102'.
+    ENDIF.
+    
+    
+    
+    
+    
