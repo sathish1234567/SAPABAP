@@ -1,0 +1,15 @@
+*Code to reflect the changes done in the internal table
+
+  IF REF_GRID IS INITIAL.
+    CALL FUNCTION 'GET_GLOBALS_FROM_SLVC_FULLSCR'
+      IMPORTING
+        E_GRID = REF_GRID.
+  ENDIF.
+
+  IF NOT REF_GRID IS INITIAL.
+
+    CALL METHOD REF_GRID->CHECK_CHANGED_DATA
+      IMPORTING
+        E_VALID = L_VALID.
+
+  ENDIF.
