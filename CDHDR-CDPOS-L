@@ -1,0 +1,121 @@
+*&---------------------------------------------------------------------*
+*& Report YYSAT
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT yysat.
+PARAMETERS p_ebeln TYPE ebeln.
+
+START-OF-SELECTION.
+  SELECT SINGLE * FROM ekko
+           INTO @DATA(ls_ekko)
+           WHERE ebeln = @p_ebeln.
+  IF sy-subrc EQ 0 AND ls_ekko-frgke = 'I'.
+    SELECT * FROM cdpos
+             INTO TABLE @DATA(lt_cdpos)
+             WHERE objectid = @ls_ekko-ebeln AND
+                   fname = 'FRGKE' AND
+                   value_new = @ls_ekko-frgke.
+    IF sy-subrc EQ 0.
+      DELETE lt_cdpos WHERE NOT value_old EQ 'C'.
+      SORT lt_cdpos BY changenr DESCENDING..
+      READ TABLE lt_cdpos INTO DATA(ls_cdpos) INDEX 1. " latest changenr
+      SELECT SINGLE * FROM cdhdr
+               INTO @DATA(ls_cdhdr)
+               WHERE objectid = @ls_ekko-ebeln AND
+                     changenr = @ls_cdpos-changenr AND
+                     tcode = 'ME29N'.
+      IF sy-subrc EQ 0.
+        SELECT SINGLE * FROM user_addr
+                 INTO @DATA(ls_usr_addr)
+                 WHERE bname = @ls_cdhdr-username .
+        IF sy-subrc EQ 0.
+          WRITE : ls_usr_addr-name_textc.
+        ENDIF.
+      ENDIF.
+    ENDIF.
+  ELSEIF ls_ekko-frgke = 'U'.
+    SELECT * FROM cdpos
+             INTO TABLE lt_cdpos
+             WHERE objectid = ls_ekko-ebeln AND
+                   fname = 'FRGKE' AND
+                   value_new IN ('I', 'U').
+    IF sy-subrc EQ 0.
+      DATA lr_oldval TYPE RANGE OF cdfldvalo WITH HEADER LINE.
+      lr_oldval-sign = 'I'.
+      lr_oldval-option = 'EQ'.
+      lr_oldval-low = 'C'.
+      APPEND lr_oldval.
+      lr_oldval-sign = 'I'.
+      lr_oldval-option = 'EQ'.
+      lr_oldval-low = 'I'.
+      APPEND lr_oldval.
+      DELETE lt_cdpos WHERE NOT value_old IN lr_oldval.
+      SORT lt_cdpos BY value_old ASCENDING changenr DESCENDING.
+      DELETE ADJACENT DUPLICATES FROM lt_cdpos COMPARING value_old.
+      IF NOT lt_cdpos IS INITIAL.
+        SELECT * FROM cdhdr
+              INTO TABLE @DATA(lt_cdhdr)
+              FOR ALL ENTRIES IN @lt_cdpos
+              WHERE objectid = @ls_ekko-ebeln AND
+                    changenr = @lt_cdpos-changenr AND
+                    tcode = 'ME29N'.
+        IF sy-subrc EQ 0.
+          SELECT * FROM user_addr
+                INTO TABLE @DATA(lt_usr_addr)
+                FOR ALL ENTRIES IN @lt_cdhdr
+                WHERE bname = @lt_cdhdr-username .
+          IF sy-subrc EQ 0.
+            LOOP AT lt_usr_addr INTO ls_usr_addr.
+              WRITE :/ ls_usr_addr-name_textc.
+            ENDLOOP.
+          ENDIF.
+        ENDIF.
+      ENDIF.
+    ENDIF.
+  ELSEIF ls_ekko-frgke = 'R'.
+    SELECT * FROM cdpos
+         INTO TABLE lt_cdpos
+         WHERE objectid = ls_ekko-ebeln AND
+               fname = 'FRGKE' AND
+               value_new IN ('I', 'U', 'R').
+    IF sy-subrc EQ 0.
+*      DATA lr_oldval TYPE RANGE OF cdfldvalo WITH HEADER LINE.
+      lr_oldval-sign = 'I'.
+      lr_oldval-option = 'EQ'.
+      lr_oldval-low = 'C'.
+      APPEND lr_oldval.
+      lr_oldval-sign = 'I'.
+      lr_oldval-option = 'EQ'.
+      lr_oldval-low = 'I'.
+      APPEND lr_oldval.
+      lr_oldval-sign = 'I'.
+      lr_oldval-option = 'EQ'.
+      lr_oldval-low = 'U'.
+      APPEND lr_oldval.
+      DELETE lt_cdpos WHERE NOT value_old IN lr_oldval.
+      SORT lt_cdpos BY value_old ASCENDING changenr DESCENDING.
+      DELETE ADJACENT DUPLICATES FROM lt_cdpos COMPARING value_old.
+      IF NOT lt_cdpos IS INITIAL.
+        SELECT * FROM cdhdr
+              INTO TABLE lt_cdhdr
+              FOR ALL ENTRIES IN lt_cdpos
+              WHERE objectid = ls_ekko-ebeln AND
+                    changenr = lt_cdpos-changenr AND
+                    tcode = 'ME29N'.
+        IF sy-subrc EQ 0.
+          SELECT * FROM user_addr
+                INTO TABLE lt_usr_addr
+                FOR ALL ENTRIES IN lt_cdhdr
+                WHERE bname = lt_cdhdr-username .
+          IF sy-subrc EQ 0.
+            LOOP AT lt_usr_addr INTO ls_usr_addr.
+              WRITE :/ ls_usr_addr-name_textc.
+            ENDLOOP.
+          ENDIF.
+        ENDIF.
+      ENDIF.
+    ENDIF.
+
+
+  ENDIF.
