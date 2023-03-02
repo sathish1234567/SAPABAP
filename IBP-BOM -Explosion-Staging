@@ -1,0 +1,1591 @@
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*& Developer Name/ID  : <Madhu Panasa>
+*& Functional Name    : <Jayabharathy Jothiprakasam>
+*& FS ID              : <MM001>
+*& Request No         : <TR NUMBER>
+*& Solman No          : <SOLMAN NO + CD>
+*& Description        : Copy Prgm / < Master data IBP>
+*&                      <Changes - Issue & Resolution in WORDS>
+*& Creation Date      : <13.01.2023>
+*& Modify Id          : NA
+*&                      Start of changes <UnqID>/End of changes <UnqID>
+*&---------------------------------------------------------------------*
+REPORT ztest121.
+DATA lt_kmat_mv            TYPE STANDARD TABLE OF zibp_s_mdmv_bom_ph.
+DATA lt_kmats_mv1          TYPE STANDARD TABLE OF zibp_s_mdmv_bom_ph.
+DATA lt_kmats_mv           TYPE STANDARD TABLE OF zibp_s_mdmv_bom_ph.
+
+DATA lv_werks       TYPE marc-werks.
+
+CONSTANTS : gc_aumng TYPE stko-bmeng    VALUE 1,
+            gc_auskz TYPE csdata-xfeld  VALUE 'X',
+            gc_capid TYPE tc04-capid    VALUE 'PP01',
+            gc_cuovs TYPE ibversion     VALUE 0,
+            gc_stpst TYPE stpox-stufe   VALUE 0,
+            gc_svwvo TYPE csdata-xfeld  VALUE 'X',
+            gc_vrsvo TYPE csdata-xfeld  VALUE 'X',
+            gc_x     VALUE 'X'.
+DATA ls_kmat_mv            TYPE                   zibp_s_mdmv_bom_ph.
+DATA gv_where_vbak    TYPE string.
+DATA gv_params        TYPE string.
+DATA gv_where_vbak_delta TYPE string.
+DATA gv_where_kmat    TYPE string.
+DATA gv_option   TYPE string.
+DATA gv_tab_name TYPE string.
+DATA gr_so        TYPE RANGE OF vbeln_va.
+DATA gr_mv        TYPE RANGE OF matnr.
+DATA gr_pp_sos_id TYPE RANGE OF /ibp/pp_sos_id.
+DATA gr_pp_sos_id_bom TYPE RANGE OF /ibp/pp_sos_id.
+DATA lv_mv(40) TYPE c.
+DATA : gv_topequi TYPE cstequi,
+       gv_topmat  TYPE cstmat,
+       gv_toptpl  TYPE csttpl,
+       gv_dstst   TYPE csdata-xfeld.
+DATA : gt_stbd TYPE STANDARD TABLE OF csxdoc,
+       gt_stbe TYPE STANDARD TABLE OF csxequi,
+       gt_stbk TYPE STANDARD TABLE OF csxkla,
+       gt_stbm TYPE STANDARD TABLE OF csxmat,
+       gt_stbp TYPE STANDARD TABLE OF csxgen,
+       gt_stbt TYPE STANDARD TABLE OF csxtpl.
+DATA: lr_matnr TYPE curto_matnr_range_t.
+DATA: wa_r        TYPE curto_matnr_range,
+      lv_char(20) TYPE c.
+DATA:
+  it_rto_components TYPE  cif_curto_component_tab,
+  it_rto_opr_of_seq TYPE  cif_curto_opr_of_seq_tab,
+  it_rto_modes      TYPE cif_curto_mode_tab,
+  it_rto_planoprt   TYPE cif_plnopt_tab,
+  it_rto_trprod     TYPE cif_trprod_tab,
+  it_rto_activities TYPE  cif_curto_activity_tab,
+  it_rto_reqcaps    TYPE cif_curto_reqcap_tab,
+  ct_sos_head_pp    TYPE TABLE OF /ibp/soshead_ext,
+  ct_sos_bom_pp     TYPE /ibp/ecc_t_sosbom,
+  ct_sos_res_pp     TYPE /ibp/ecc_t_sosres,
+  ct_sos_act_pp     TYPE /ibp/ecc_t_sosact.
+DATA gt_soshead_ext_final       TYPE STANDARD TABLE OF /ibp/soshead_ext. "Final SOSHEAD_EXT Data for Constructed Variants
+DATA gt_sosres_ext_final        TYPE STANDARD TABLE OF /ibp/sosres_ext. "Final SOSRES_EXT Data for Constructed Variants
+DATA gt_sosact_ext_final        TYPE STANDARD TABLE OF /ibp/sosact_ext. "Final SOSACT_EXT Data for Constructed Variants
+DATA gt_sosbom_ext_final        TYPE STANDARD TABLE OF /ibp/sosbom_ext. "Final SOSBOM_EXT Data for Constructed Variants
+DATA gt_tlane_ext_final         TYPE STANDARD TABLE OF /ibp/tlane_ext.
+DATA gr_werks TYPE RANGE OF werks_d WITH HEADER LINE.
+DATA gt_tvarvc TYPE TABLE OF tvarvc.
+DATA: lv_beskz TYPE beskz,
+      lv_sobsl TYPE /ibp/sobsl.
+RANGES: r_beskz FOR lv_beskz,
+        r_sobsl FOR lv_sobsl.
+TYPES: BEGIN OF ty_marc,
+         logsys  TYPE logsys,
+         matnr   TYPE /ibp/matnr,
+         locno   TYPE werks_d,
+         loctype TYPE /ibp/loctype,
+         plifz   TYPE plifz,
+         beskz   TYPE beskz,
+         sobsl   TYPE /ibp/sobsl,
+         matnr1  TYPE matnr,
+       END OF ty_marc.
+
+
+
+DATA:lt_marc_temp  TYPE STANDARD TABLE OF /ibp/marc_ext.
+DATA:lt_marc_temp_r  TYPE STANDARD TABLE OF /ibp/marc_ext.
+DATA:lt_marc_temp1  TYPE STANDARD TABLE OF ty_marc.
+DATA:lt_marc_temp2  TYPE STANDARD TABLE OF ty_marc.
+DATA:ls_marc_temp1  TYPE  ty_marc.
+DATA:lt_marc_null  TYPE STANDARD TABLE OF ty_marc.
+DATA:lt_marc_valu  TYPE STANDARD TABLE OF ty_marc.
+DATA:ls_tlane    TYPE /ibp/tlane_ext.
+
+TABLES: vbak ,vbap.
+SELECT-OPTIONS: p_vbeln FOR  vbak-vbeln OBLIGATORY NO INTERVALS NO-EXTENSION.
+*                p_posnr FOR  VBap-posnr OBLIGATORY.
+
+
+START-OF-SELECTION.
+  PERFORM get_data.
+  PERFORM get_data." USING P_vbeln p_posnr .
+
+  SELECT  * FROM wb2_v_vbak_vbap2
+  INTO TABLE @DATA(lt_wb2_v_vbak_vbap2)
+  WHERE vbeln IN @p_vbeln.
+  "AND   posnr_i IN @p_posnr.
+  IF sy-subrc EQ 0.
+    SORT lt_wb2_v_vbak_vbap2 BY vbeln_i posnr_i.
+    IF lt_wb2_v_vbak_vbap2 IS NOT INITIAL.
+
+      SELECT werks,
+             bwkey
+           FROM t001w
+          INTO TABLE @DATA(lt_t001w)
+        FOR ALL ENTRIES IN @lt_wb2_v_vbak_vbap2
+        WHERE werks = @lt_wb2_v_vbak_vbap2-werks_i.
+
+      IF lt_t001w IS NOT INITIAL.
+
+        SELECT bwkey,
+               bukrs
+             FROM t001k INTO TABLE @DATA(lt_t001k)
+             FOR ALL ENTRIES IN @lt_t001w
+            WHERE bwkey = @lt_t001w-bwkey.
+
+        IF lt_t001k IS NOT INITIAL.
+          SORT lt_t001k BY bukrs.
+          SELECT bwkey,
+                 bukrs
+             FROM t001k INTO TABLE @DATA(lt_com_t001k)
+            FOR ALL ENTRIES IN @lt_t001k
+           WHERE bukrs = @lt_t001k-bukrs.
+
+          IF lt_com_t001k IS NOT INITIAL.
+            SORT lt_com_t001k BY bwkey.
+            SELECT werks,
+                   bwkey
+                 FROM t001w
+                INTO TABLE @DATA(lt_val_t001w)
+              FOR ALL ENTRIES IN @lt_com_t001k
+                WHERE bwkey = @lt_com_t001k-bwkey.
+          ENDIF.
+        ENDIF.
+      ENDIF.
+    ENDIF.
+    SORT lt_wb2_v_vbak_vbap2 BY matnr_i.
+    SORT lt_val_t001w BY werks.
+    SELECT matnr,
+          werks,
+          beskz,
+          lvorm,
+          dismm,
+          sobsl
+      FROM marc
+      INTO TABLE @DATA(lt_marc)
+      FOR ALL ENTRIES IN @lt_wb2_v_vbak_vbap2
+      WHERE matnr EQ @lt_wb2_v_vbak_vbap2-matnr_i
+      AND   lvorm EQ @abap_false
+      AND   dismm IN ('PD' , 'X0' ).
+    SORT lt_marc BY matnr.
+    CLEAR : lt_kmat_mv[].
+
+    PERFORM get_tvarvc.
+    PERFORM get_plants_exc.
+
+    LOOP AT lt_wb2_v_vbak_vbap2 INTO DATA(ls_wb2_v_vbak_vbap2).
+      SELECT SINGLE matnr FROM mara INTO @DATA(lv_matnr)
+                              WHERE matnr EQ @ls_wb2_v_vbak_vbap2-matnr_i
+                              AND   lvorm EQ @abap_true.
+      IF sy-subrc EQ 0.
+        CONTINUE.
+      ELSE.
+
+        READ TABLE lt_marc  INTO DATA(ls_marc) WITH KEY matnr = ls_wb2_v_vbak_vbap2-matnr_i.
+
+        IF sy-subrc EQ 0 .
+          DATA(lv_index) = sy-tabix.
+          LOOP AT lt_marc INTO ls_marc FROM  lv_index.
+            IF ls_marc-matnr EQ ls_wb2_v_vbak_vbap2-matnr_i.
+              CLEAR lv_werks.
+              READ TABLE lt_val_t001w TRANSPORTING NO FIELDS WITH KEY werks = ls_marc-werks.
+              IF sy-subrc EQ 0.
+                lv_werks = ls_marc-werks..
+                IF ( ( ls_marc-beskz EQ 'E' ) OR ( ls_marc-beskz EQ 'X'  ) ).
+                  CALL FUNCTION 'CS_BOM_EXPLOSION'
+                    EXPORTING
+                      aumng                 = gc_aumng
+                      auskz                 = gc_auskz
+                      capid                 = gc_capid
+                      cuobj                 = ls_wb2_v_vbak_vbap2-cuobj_i
+                      cuovs                 = gc_cuovs
+                      datuv                 = ls_wb2_v_vbak_vbap2-vdatu
+*                     emeng                 = ls_wb2_v_vbak_vbap2-kwmeng_i
+                      mtnrv                 = ls_wb2_v_vbak_vbap2-matnr_i
+                      stpst                 = gc_stpst
+                      svwvo                 = gc_svwvo
+*                     WERKS                 = <LS_SBOM_EXP>-WERKS
+                      werks                 = lv_werks
+                      vbeln                 = ls_wb2_v_vbak_vbap2-vbeln_i
+                      vbpos                 = ls_wb2_v_vbak_vbap2-posnr_i
+                      vrsvo                 = gc_vrsvo
+                    IMPORTING
+                      topequi               = gv_topequi
+                      topmat                = gv_topmat
+                      toptpl                = gv_toptpl
+                      dstst                 = gv_dstst
+                    TABLES
+                      stbd                  = gt_stbd
+                      stbe                  = gt_stbe
+                      stbk                  = gt_stbk
+                      stbm                  = gt_stbm
+                      stbp                  = gt_stbp
+                      stbt                  = gt_stbt
+                    EXCEPTIONS
+                      alt_not_found         = 1
+                      call_invalid          = 2
+                      missing_authorization = 3
+                      no_bom_found          = 4
+                      no_plant_data         = 5
+                      no_suitable_bom_found = 6
+                      object_not_found      = 7
+                      conversion_error      = 8
+                      OTHERS                = 9.
+                  IF sy-subrc <> 0.
+                  ELSE.
+                    lv_mv =  |{ ls_wb2_v_vbak_vbap2-matnr_i }_{ ls_wb2_v_vbak_vbap2-vbeln_i ALPHA = OUT }_{ ls_wb2_v_vbak_vbap2-posnr_i ALPHA = OUT }|.
+                    CONDENSE lv_mv NO-GAPS.
+                    lt_kmats_mv = VALUE #( FOR line   IN gt_stbp (  mandt                = sy-mandt
+                                                                    sales_order          = ls_wb2_v_vbak_vbap2-vbeln_i
+                                                                    item                 = ls_wb2_v_vbak_vbap2-posnr_i
+                                                                    sales_kmat           = ls_wb2_v_vbak_vbap2-matnr_i
+                                                                    material_variant     = lv_mv
+                                                                    plant                = lv_werks
+                                                                    mv_item_category     = ls_wb2_v_vbak_vbap2-pstyv_i
+                                                                     child_item           = line-objnr
+                                                                    child_item_posnr     = ls_wb2_v_vbak_vbap2-posnr_i
+                                                                    component_id         = line-wegxx
+                                                                    order_quantity       = line-menge
+                                                                    uom                  = line-meins
+                                                                    creation_date        = sy-datum ) ).
+                    APPEND LINES OF lt_kmats_mv[] TO lt_kmat_mv[].
+                  ENDIF.
+                  IF  ls_marc-beskz EQ 'X'  .
+                    CLEAR: ls_kmat_mv , lv_mv.
+                    ls_kmat_mv-mandt                = sy-mandt.
+                    ls_kmat_mv-sales_order          = ls_wb2_v_vbak_vbap2-vbeln_i.
+                    ls_kmat_mv-item                 = ls_wb2_v_vbak_vbap2-posnr_i.
+                    ls_kmat_mv-sales_kmat           = ls_wb2_v_vbak_vbap2-matnr_i.
+                    lv_mv =  |{ ls_wb2_v_vbak_vbap2-matnr_i }_{ ls_wb2_v_vbak_vbap2-vbeln_i ALPHA = OUT }_{ ls_wb2_v_vbak_vbap2-posnr_i ALPHA = OUT }|.
+                    CONDENSE lv_mv NO-GAPS.
+                    ls_kmat_mv-material_variant     = lv_mv.
+                    ls_kmat_mv-plant                = lv_werks.
+                    ls_kmat_mv-mv_item_category     = ls_wb2_v_vbak_vbap2-pstyv_i.
+                    APPEND ls_kmat_mv TO lt_kmat_mv.
+                  ENDIF.
+                ELSEIF  ls_marc-beskz EQ 'F'.
+                  CLEAR: ls_kmat_mv , lv_mv.
+                  ls_kmat_mv-mandt                = sy-mandt.
+                  ls_kmat_mv-sales_order          = ls_wb2_v_vbak_vbap2-vbeln_i.
+                  ls_kmat_mv-item                 = ls_wb2_v_vbak_vbap2-posnr_i.
+                  ls_kmat_mv-sales_kmat           = ls_wb2_v_vbak_vbap2-matnr_i.
+                  lv_mv =  |{ ls_wb2_v_vbak_vbap2-matnr_i }_{ ls_wb2_v_vbak_vbap2-vbeln_i ALPHA = OUT }_{ ls_wb2_v_vbak_vbap2-posnr_i ALPHA = OUT }|.
+                  CONDENSE lv_mv NO-GAPS.
+                  ls_kmat_mv-material_variant     = lv_mv.
+                  ls_kmat_mv-plant                = lv_werks.
+                  ls_kmat_mv-mv_item_category     = ls_wb2_v_vbak_vbap2-pstyv_i.
+
+                  APPEND ls_kmat_mv TO lt_kmat_mv.
+                ENDIF.
+              ENDIF.
+            ENDIF.
+          ENDLOOP.
+        ENDIF.
+      ENDIF.
+      CLEAR :   gv_topequi,
+          gv_topmat,
+          gv_toptpl,
+          gv_dstst.
+      CLEAR :   gt_stbd,
+                gt_stbe,
+                gt_stbk,
+                gt_stbm,
+                gt_stbp,
+                gt_stbt.
+
+      CLEAR :
+              ls_kmat_mv.
+
+      CLEAR lv_mv.
+    ENDLOOP.
+
+    lt_kmats_mv[] =  lt_kmat_mv[].
+    SORT lt_kmats_mv BY child_item DESCENDING.
+    DELETE lt_kmats_mv WHERE child_item EQ ' '.
+    LOOP AT lt_kmats_mv INTO DATA(ls_kmats_mv) WHERE child_item NE '  '.
+      SELECT SINGLE matnr FROM mara INTO @lv_matnr
+                        WHERE matnr EQ @ls_kmats_mv-child_item
+                        AND   lvorm EQ @abap_true.
+      IF sy-subrc EQ 0.
+        CONTINUE.
+      ELSE.
+        SELECT
+         matnr,
+          werks,
+          beskz,
+          lvorm,
+          dismm,
+          sobsl
+      FROM marc
+       INTO TABLE @DATA(lt_marc_child)
+       WHERE matnr EQ @ls_kmats_mv-child_item
+       AND   lvorm EQ @abap_false
+       AND    dismm IN ('PD' , 'X0' ).
+        LOOP  AT lt_marc_child INTO DATA(ls_marc_child).
+          READ TABLE lt_val_t001w TRANSPORTING NO FIELDS WITH KEY werks = ls_marc_child-werks.
+          IF sy-subrc EQ 0.
+            CLEAR lv_werks.
+            lv_werks = ls_marc_child-werks.
+            IF ( ( ls_marc_child-beskz EQ 'E' ) OR ( ls_marc_child-beskz EQ 'X'  ) ).
+
+              CALL FUNCTION 'CS_BOM_EXPLOSION'
+                EXPORTING
+                  aumng                 = gc_aumng
+                  auskz                 = gc_auskz
+                  capid                 = gc_capid
+                  cuobj                 = ls_wb2_v_vbak_vbap2-cuobj_i
+                  cuovs                 = gc_cuovs
+                  datuv                 = ls_wb2_v_vbak_vbap2-vdatu
+*                 emeng                 = ls_wb2_v_vbak_vbap2-kwmeng_i
+                  mtnrv                 = ls_kmats_mv-child_item
+                  stpst                 = gc_stpst
+                  svwvo                 = gc_svwvo
+*                 WERKS                 = <LS_SBOM_EXP>-WERKS
+                  werks                 = lv_werks
+                  vbeln                 = ls_wb2_v_vbak_vbap2-vbeln_i
+                  vbpos                 = ls_wb2_v_vbak_vbap2-posnr_i
+                  vrsvo                 = gc_vrsvo
+                IMPORTING
+                  topequi               = gv_topequi
+                  topmat                = gv_topmat
+                  toptpl                = gv_toptpl
+                  dstst                 = gv_dstst
+                TABLES
+                  stbd                  = gt_stbd
+                  stbe                  = gt_stbe
+                  stbk                  = gt_stbk
+                  stbm                  = gt_stbm
+                  stbp                  = gt_stbp
+                  stbt                  = gt_stbt
+                EXCEPTIONS
+                  alt_not_found         = 1
+                  call_invalid          = 2
+                  missing_authorization = 3
+                  no_bom_found          = 4
+                  no_plant_data         = 5
+                  no_suitable_bom_found = 6
+                  object_not_found      = 7
+                  conversion_error      = 8
+                  OTHERS                = 9.
+              IF sy-subrc <> 0.
+              ELSE.
+                IF lv_werks  IN gr_werks OR ls_kmats_mv-child_item+0(2) EQ 'TG'.
+                  lv_mv = |{ ls_kmats_mv-child_item }_{ ls_wb2_v_vbak_vbap2-vbeln_i ALPHA = OUT }|.
+                ELSE.
+                  lv_mv =  |{ ls_kmats_mv-child_item }_{ ls_wb2_v_vbak_vbap2-vbeln_i ALPHA = OUT }_{ ls_wb2_v_vbak_vbap2-posnr_i ALPHA = OUT }|.
+                ENDIF.
+                CONDENSE lv_mv NO-GAPS.
+                lt_kmats_mv1 = VALUE #( FOR line   IN gt_stbp (  mandt                = sy-mandt
+                                                                 sales_order          = ls_wb2_v_vbak_vbap2-vbeln_i
+                                                                 item                 = ls_wb2_v_vbak_vbap2-posnr_i
+                                                                 sales_kmat           = ls_kmats_mv-child_item
+                                                                 material_variant     = lv_mv
+                                                                 plant                = lv_werks
+                                                                 mv_item_category     = ls_wb2_v_vbak_vbap2-pstyv_i
+                                                                  child_item           = line-objnr
+                                                                 child_item_posnr     = ls_wb2_v_vbak_vbap2-posnr_i
+                                                                 component_id         = line-wegxx
+                                                                 order_quantity       = line-menge
+                                                                 uom                  = line-meins
+                                                                 creation_date        = sy-datum ) ).
+                APPEND LINES OF lt_kmats_mv1[] TO lt_kmat_mv[].
+
+              ENDIF.
+              IF  ls_marc_child-beskz EQ 'X'  .
+                CLEAR: ls_kmat_mv , lv_mv.
+                ls_kmat_mv-mandt                = sy-mandt.
+                ls_kmat_mv-sales_order          = ls_wb2_v_vbak_vbap2-vbeln_i.
+                ls_kmat_mv-item                 = ls_wb2_v_vbak_vbap2-posnr_i.
+                ls_kmat_mv-sales_kmat           = ls_kmats_mv-child_item.
+                IF lv_werks IN gr_werks OR ls_kmats_mv-child_item+0(2) EQ 'TG'.
+                  lv_mv = |{ ls_kmats_mv-child_item }_{ ls_wb2_v_vbak_vbap2-vbeln_i ALPHA = OUT }|.
+                ELSE.
+                  lv_mv =  |{ ls_kmats_mv-child_item }_{ ls_wb2_v_vbak_vbap2-vbeln_i ALPHA = OUT }_{ ls_wb2_v_vbak_vbap2-posnr_i ALPHA = OUT }|.
+                ENDIF.
+                CONDENSE lv_mv NO-GAPS.
+                ls_kmat_mv-material_variant     = lv_mv.
+                ls_kmat_mv-plant                = lv_werks.
+                ls_kmat_mv-mv_item_category     = ls_wb2_v_vbak_vbap2-pstyv_i.
+                APPEND ls_kmat_mv TO lt_kmat_mv.
+              ENDIF.
+            ELSEIF  ls_marc_child-beskz EQ 'F' .
+              CLEAR: ls_kmat_mv , lv_mv.
+              ls_kmat_mv-mandt                = sy-mandt.
+              ls_kmat_mv-sales_order          = ls_wb2_v_vbak_vbap2-vbeln_i.
+              ls_kmat_mv-item                 = ls_wb2_v_vbak_vbap2-posnr_i.
+              ls_kmat_mv-sales_kmat           = ls_kmats_mv-child_item.
+              IF lv_werks  IN gr_werks OR ls_kmats_mv-child_item+0(2) EQ 'TG'.
+                lv_mv = |{ ls_kmats_mv-child_item }_{ ls_wb2_v_vbak_vbap2-vbeln_i ALPHA = OUT }|.
+              ELSE.
+                lv_mv =  |{ ls_kmats_mv-child_item }_{ ls_wb2_v_vbak_vbap2-vbeln_i ALPHA = OUT }_{ ls_wb2_v_vbak_vbap2-posnr_i ALPHA = OUT }|.
+              ENDIF.
+              CONDENSE lv_mv NO-GAPS.
+              ls_kmat_mv-material_variant     = lv_mv.
+              ls_kmat_mv-plant                = lv_werks.
+              ls_kmat_mv-mv_item_category     = ls_wb2_v_vbak_vbap2-pstyv_i.
+              APPEND ls_kmat_mv TO lt_kmat_mv.
+            ENDIF.
+            APPEND LINES OF lt_kmats_mv1  TO lt_kmats_mv.
+            CLEAR:lt_kmats_mv1 .
+
+            CLEAR :   gv_topequi,
+                      gv_topmat,
+                      gv_toptpl,
+                      gv_dstst.
+            CLEAR :   gt_stbd,
+                      gt_stbe,
+                      gt_stbk,
+                      gt_stbm,
+                      gt_stbp,
+                      gt_stbt.
+          ENDIF.
+        ENDLOOP.
+      ENDIF.
+      DELETE TABLE  lt_kmats_mv FROM ls_kmats_mv.
+      SORT lt_kmats_mv BY sales_kmat material_variant child_item plant.
+      DELETE ADJACENT DUPLICATES FROM lt_kmats_mv COMPARING ALL FIELDS.
+*        SORT lt_kmats_mv BY child_item DESCENDING.
+    ENDLOOP.
+
+
+
+*    ex_kmat_mv[] = lt_kmat_mv[].
+    SORT lt_kmat_mv BY material_variant child_item plant.
+    DELETE ADJACENT DUPLICATES FROM lt_kmat_mv
+                        COMPARING material_variant child_item plant.
+    IF lt_kmat_mv IS NOT INITIAL.
+      SELECT
+      a~matnr,
+      a~werks,
+      a~webaz,
+      a~plifz,
+      a~eisbe,
+      a~lvorm,
+      a~beskz,
+      a~dzeit,
+      a~fxhor,
+      a~dispo,
+      a~shflg,
+      a~shzet,
+      a~sobsl,
+      a~ausss,
+      a~mmsta,
+      a~dismm,
+      a~ekgrp,
+*      b~lvorm,
+      b~mtart,
+      b~matkl,
+      b~meins,
+      b~prdha,
+      c~spras,
+      c~maktx,
+      c~maktg
+      FROM marc AS a
+      INNER JOIN mara AS b ON a~matnr = b~matnr
+      INNER JOIN makt AS c ON c~matnr = a~matnr
+      INTO TABLE @DATA(lt_mara)
+      FOR ALL ENTRIES IN @lt_kmat_mv
+      WHERE a~matnr EQ @lt_kmat_mv-sales_kmat
+*        AND a~werks EQ @lt_kmat_mv-plant
+        AND c~spras EQ @sy-langu.
+      SELECT
+      matnr,
+      meinh,
+      umrez,
+      umren,
+      laeng,
+      breit,
+      hoehe,
+      meabm,
+      volum,
+      voleh,
+      brgew,
+      gewei
+      FROM marm
+      INTO TABLE @DATA(lt_marm)
+      FOR ALL ENTRIES IN @lt_kmat_mv
+       WHERE matnr EQ @lt_kmat_mv-sales_kmat.
+    ENDIF.
+
+    DATA : gt_kmat_mv_mara_ext_final TYPE STANDARD TABLE OF /ibp/mara_ext, "Final Mara_Ext Data for Constructed Variants
+           gt_kmat_mv_marc_ext_final TYPE STANDARD TABLE OF /ibp/marc_ext, "Final Mara_Ext Data for Constructed Variants
+           gt_kmat_mv_marc_ext_tlane TYPE STANDARD TABLE OF /ibp/marc_ext, "Final Mara_Ext Data for Constructed Variants
+           gt_kmat_mv_makt_ext_final TYPE STANDARD TABLE OF /ibp/makt_ext,
+           gt_kmat_mv_marm_ext_final TYPE STANDARD TABLE OF /IBP/MARM_EXT.
+
+    DATA : gs_kmat_mv_mara_ext_final TYPE /ibp/mara_ext,                "Final Mara_Ext Data for Constructed Variants
+           gs_kmat_mv_marc_ext_final TYPE /ibp/marc_ext,                "Final Mara_Ext Data for Constructed Variants
+           gs_kmat_mv_makt_ext_final TYPE /ibp/makt_ext.
+    SELECT * FROM t000 INTO TABLE @DATA(lt_t000) WHERE mandt = @sy-mandt.
+
+
+    CLEAR : ls_kmats_mv. REFRESH  lr_matnr.
+    LOOP AT lt_kmat_mv INTO ls_kmat_mv.
+
+      "To fetch the mara, marc, makt
+      READ TABLE lt_mara INTO DATA(ls_mara)
+      WITH KEY matnr = ls_kmat_mv-sales_kmat werks = ls_kmat_mv-plant.
+      IF sy-subrc EQ 0.
+        gs_kmat_mv_marc_ext_final = CORRESPONDING #( ls_mara ).         "To move corresponding "marc" data
+        gs_kmat_mv_mara_ext_final = CORRESPONDING #( ls_mara ).         "To move corresponding "mara" data
+        gs_kmat_mv_makt_ext_final = CORRESPONDING #( ls_mara ).         "To move corresponding "makt" data
+      ENDIF.
+
+      "To fetch the "logsys" field
+      READ TABLE lt_t000 INTO DATA(ls_data) WITH KEY mandt = sy-mandt.
+      IF sy-subrc EQ 0.
+        gs_kmat_mv_mara_ext_final-logsys = ls_data-logsys.
+        gs_kmat_mv_marc_ext_final-logsys = ls_data-logsys.
+        gs_kmat_mv_makt_ext_final-logsys = ls_data-logsys.
+      ENDIF.
+
+      "To fill the mara
+      gs_kmat_mv_mara_ext_final-matnr     = ls_kmat_mv-material_variant.
+      gs_kmat_mv_mara_ext_final-matnr_ext = ls_kmat_mv-sales_kmat.
+*      ls_kmat_mv-material_variant.
+
+      "To fill the marc
+      gs_kmat_mv_marc_ext_final-matnr   = ls_kmat_mv-material_variant.
+      gs_kmat_mv_marc_ext_final-locno   = ls_kmat_mv-plant.
+      gs_kmat_mv_marc_ext_final-loctype = 'P'.                          "Plant
+
+      "To fill the makt
+      gs_kmat_mv_makt_ext_final-matnr = ls_kmat_mv-material_variant.
+      gs_kmat_mv_makt_ext_final-spras = sy-langu.
+
+      APPEND gs_kmat_mv_mara_ext_final TO gt_kmat_mv_mara_ext_final.
+      APPEND gs_kmat_mv_marc_ext_final TO gt_kmat_mv_marc_ext_final.
+      APPEND gs_kmat_mv_marc_ext_final TO gt_kmat_mv_marc_ext_tlane.
+      APPEND gs_kmat_mv_makt_ext_final TO gt_kmat_mv_makt_ext_final.
+
+      gs_kmat_mv_mara_ext_final-matnr     = ls_kmat_mv-sales_kmat.
+      gs_kmat_mv_mara_ext_final-matnr_ext = ls_kmat_mv-sales_kmat.
+
+      "To fill the marc
+      gs_kmat_mv_marc_ext_final-matnr   = ls_kmat_mv-sales_kmat.
+      gs_kmat_mv_marc_ext_final-locno   = ls_kmat_mv-plant.
+      gs_kmat_mv_marc_ext_final-loctype = 'P'.                          "Plant
+
+      "To fill the makt
+      gs_kmat_mv_makt_ext_final-matnr = ls_kmat_mv-sales_kmat.
+      gs_kmat_mv_makt_ext_final-spras = sy-langu.
+
+      CLEAR wa_r.
+      wa_r-sign   = 'I'.
+      wa_r-option = 'EQ'.
+*      if ls_kmat_mv-sales_kmat+0(2) NE 'TG'.
+      wa_r-low    = ls_kmat_mv-sales_kmat.
+      APPEND wa_r TO lr_matnr.
+*      endif.
+
+      APPEND gs_kmat_mv_mara_ext_final TO gt_kmat_mv_mara_ext_final.
+      APPEND gs_kmat_mv_marc_ext_final TO gt_kmat_mv_marc_ext_final.
+      APPEND gs_kmat_mv_makt_ext_final TO gt_kmat_mv_makt_ext_final.
+    ENDLOOP.
+    SORT gt_kmat_mv_mara_ext_final BY matnr.
+    DELETE ADJACENT DUPLICATES FROM gt_kmat_mv_mara_ext_final
+    COMPARING matnr.
+    SORT gt_kmat_mv_makt_ext_final BY matnr.
+    DELETE ADJACENT DUPLICATES FROM gt_kmat_mv_makt_ext_final
+    COMPARING matnr.
+
+
+    DATA(lt_mvc) = gt_kmat_mv_mara_ext_final[].
+    SORT lt_mvc BY matnr.
+    DELETE ADJACENT DUPLICATES FROM lt_mvc COMPARING matnr.
+    DATA(lv_mvc_no) = lines( lt_mvc ).
+    DATA(lv_rc) = |{ lv_mvc_no }  Material Variants Created & { sy-dbcnt } inserted after explosion.. |.
+    gr_mv = VALUE #( FOR line1 IN gt_kmat_mv_mara_ext_final ( sign = 'I' option = 'EQ' low = line1-matnr ) ).
+
+    IF gt_kmat_mv_mara_ext_final[] IS NOT INITIAL.
+      CALL FUNCTION 'ENQUEUE_E_TABLE'
+        EXPORTING
+          tabname        = '/IBP/MARA_EXT'
+        EXCEPTIONS
+          foreign_lock   = 1
+          system_failure = 2
+          OTHERS         = 3.
+      DELETE FROM /ibp/mara_ext WHERE matnr IN gr_mv[].
+      MODIFY      /ibp/mara_ext FROM TABLE gt_kmat_mv_mara_ext_final[].
+      IF sy-subrc EQ 0.
+        COMMIT WORK.
+      ENDIF.
+
+      CALL FUNCTION 'DEQUEUE_E_TABLE'
+        EXPORTING
+          tabname = '/IBP/MARA_EXT'.
+    ENDIF.
+
+    IF gt_kmat_mv_marc_ext_final[] IS NOT INITIAL.
+      CALL FUNCTION 'ENQUEUE_E_TABLE'
+        EXPORTING
+          tabname        = '/IBP/MARC_EXT'
+        EXCEPTIONS
+          foreign_lock   = 1
+          system_failure = 2
+          OTHERS         = 3.
+      DELETE FROM /ibp/marc_ext WHERE matnr IN gr_mv[].
+      MODIFY      /ibp/marc_ext FROM TABLE gt_kmat_mv_marc_ext_final[].
+      IF sy-subrc EQ 0.
+        COMMIT WORK.
+      ENDIF.
+
+      CALL FUNCTION 'DEQUEUE_E_TABLE'
+        EXPORTING
+          tabname = '/IBP/MARC_EXT'.
+    ENDIF.
+
+
+    IF gt_kmat_mv_makt_ext_final[] IS NOT INITIAL.
+      CALL FUNCTION 'ENQUEUE_E_TABLE'
+        EXPORTING
+          tabname        = '/IBP/MAKT_EXT'
+        EXCEPTIONS
+          foreign_lock   = 1
+          system_failure = 2
+          OTHERS         = 3.
+      DELETE FROM /ibp/makt_ext WHERE matnr IN gr_mv[].
+      MODIFY      /ibp/makt_ext FROM TABLE gt_kmat_mv_makt_ext_final[].
+      IF sy-subrc EQ 0.
+        COMMIT WORK.
+      ENDIF.
+
+      CALL FUNCTION 'DEQUEUE_E_TABLE'
+        EXPORTING
+          tabname = '/IBP/MAKT_EXT'.
+    ENDIF.
+    DATA: lr_matnr1 TYPE curto_matnr_range_t."FOR lv_matnr.
+    DATA: lr_matnr2 TYPE curto_matnr_range_t.
+
+*LOOP AT gt_kmat_mv_mara_ext_final INTO DATA(ls_mara_ext).
+    CLEAR wa_r.
+    DELETE ADJACENT DUPLICATES FROM  lr_matnr COMPARING low.
+    LOOP AT lr_matnr INTO wa_r.
+      READ TABLE gt_kmat_mv_marc_ext_final INTO
+      DATA(ls_marc_ext) WITH KEY matnr = wa_r-low"ls_mara_ext-matnr
+                                 sobsl = '50'.
+      IF sy-subrc NE 0.
+*   CLEAR lv_char.
+        REFRESH  lr_matnr1.
+*   SPLIT ls_mara_ext-matnr AT '_' INTO wa_r-low lv_char.
+*   wa_r-sign = 'I'.
+*   wa_r-option = 'EQ'.
+        APPEND wa_r TO lr_matnr1.
+*   APPEND wa_r TO lr_matnr2.
+        TRY .
+            CALL FUNCTION 'ZFM_IBP_PDS_SAVE'
+              EXPORTING
+                matnr = lr_matnr1.
+          CATCH cx_root INTO DATA(lv_text).
+        ENDTRY.
+        CLEAR:
+             it_rto_components,
+             it_rto_opr_of_seq,
+             it_rto_modes,
+             it_rto_planoprt,
+             it_rto_trprod,
+             it_rto_activities,
+             it_rto_reqcaps,
+             ct_sos_head_pp,
+             ct_sos_bom_pp,
+             ct_sos_res_pp,
+             ct_sos_act_pp.
+        APPEND LINES OF zcl_ibp_ecc_change_pds=>it_rto_components
+                                                   TO it_rto_components.
+        APPEND LINES OF zcl_ibp_ecc_change_pds=>it_rto_opr_of_seq
+                                                    TO it_rto_opr_of_seq.
+        APPEND LINES OF zcl_ibp_ecc_change_pds=>it_rto_modes
+                                                        TO it_rto_modes.
+        APPEND LINES OF zcl_ibp_ecc_change_pds=>it_rto_planoprt
+                                                     TO it_rto_planoprt.
+        APPEND LINES OF zcl_ibp_ecc_change_pds=>it_rto_trprod
+                                                       TO it_rto_trprod.
+        APPEND LINES OF zcl_ibp_ecc_change_pds=>it_rto_activities
+                                                   TO it_rto_activities.
+        APPEND LINES OF zcl_ibp_ecc_change_pds=>it_rto_reqcaps
+                                                      TO it_rto_reqcaps.
+        APPEND LINES OF zcl_ibp_ecc_change_pds=>cs_sos_head_pp
+                                                      TO ct_sos_head_pp.
+        APPEND LINES OF zcl_ibp_ecc_change_pds=>ct_sos_bom_pp
+                                                       TO ct_sos_bom_pp.
+        APPEND LINES OF zcl_ibp_ecc_change_pds=>ct_sos_res_pp
+                                                       TO ct_sos_res_pp.
+        APPEND LINES OF zcl_ibp_ecc_change_pds=>ct_sos_act_pp
+                                                       TO ct_sos_act_pp.
+        DELETE ADJACENT DUPLICATES FROM
+                              it_rto_components   COMPARING ALL FIELDS.
+        DELETE ADJACENT DUPLICATES FROM
+                               it_rto_opr_of_seq   COMPARING ALL FIELDS.
+        DELETE ADJACENT DUPLICATES FROM
+                               it_rto_modes        COMPARING ALL FIELDS.
+        DELETE ADJACENT DUPLICATES FROM
+                               it_rto_planoprt     COMPARING ALL FIELDS.
+        DELETE ADJACENT DUPLICATES FROM
+                               it_rto_activities   COMPARING ALL FIELDS.
+        DELETE ADJACENT DUPLICATES FROM
+                              it_rto_reqcaps      COMPARING ALL FIELDS.
+        SORT ct_sos_head_pp BY pp_sos_id.
+        DELETE ADJACENT DUPLICATES FROM
+                               ct_sos_head_pp      COMPARING ALL FIELDS.
+        SORT ct_sos_res_pp BY pp_sos_id.
+        DELETE ADJACENT DUPLICATES FROM
+                              ct_sos_res_pp       COMPARING ALL FIELDS.
+        SORT ct_sos_bom_pp  BY pp_sos_id matnr.
+        DELETE ADJACENT DUPLICATES FROM
+                              ct_sos_bom_pp       COMPARING ALL FIELDS.
+        SORT ct_sos_act_pp BY pp_sos_id.
+        DELETE ADJACENT DUPLICATES FROM
+                               ct_sos_act_pp       COMPARING ALL FIELDS.
+*      sort it_rto_trprod by pp_sos_id.
+        DELETE ADJACENT DUPLICATES FROM
+                                it_rto_trprod       COMPARING ALL FIELDS.
+        DELETE ct_sos_bom_pp WHERE matnr NOT IN lr_matnr.
+      ENDIF.
+      CLEAR: wa_r.
+    ENDLOOP.
+    IF lr_matnr IS NOT INITIAL.
+      CALL FUNCTION 'ENQUEUE_E_TABLE'
+        EXPORTING
+          tabname        = '/IBP/MARA_EXT'
+        EXCEPTIONS
+          foreign_lock   = 1
+          system_failure = 2
+          OTHERS         = 3.
+      DELETE FROM /ibp/mara_ext WHERE matnr IN lr_matnr.
+      CALL FUNCTION 'DEQUEUE_E_TABLE'
+        EXPORTING
+          tabname = '/IBP/MARA_EXT'.
+      CALL FUNCTION 'ENQUEUE_E_TABLE'
+        EXPORTING
+          tabname        = '/IBP/MAKT_EXT'
+        EXCEPTIONS
+          foreign_lock   = 1
+          system_failure = 2
+          OTHERS         = 3.
+
+      DELETE FROM /ibp/makt_ext WHERE matnr IN lr_matnr.
+
+      CALL FUNCTION 'DEQUEUE_E_TABLE'
+        EXPORTING
+          tabname = '/IBP/MAKT_EXT'.
+
+
+      CALL FUNCTION 'ENQUEUE_E_TABLE'
+        EXPORTING
+          tabname        = '/IBP/MARC_EXT'
+        EXCEPTIONS
+          foreign_lock   = 1
+          system_failure = 2
+          OTHERS         = 3.
+      DELETE FROM /ibp/marc_ext WHERE matnr IN lr_matnr.
+      CALL FUNCTION 'DEQUEUE_E_TABLE'
+        EXPORTING
+          tabname = '/IBP/MARC_EXT'.
+      COMMIT WORK.
+    ENDIF.
+    CLEAR:
+       gt_soshead_ext_final,
+       gt_sosres_ext_final,
+       gt_sosact_ext_final,
+       gt_sosbom_ext_final.
+
+    APPEND LINES OF  ct_sos_head_pp[] TO gt_soshead_ext_final[].
+    APPEND LINES OF  ct_sos_res_pp[]  TO gt_sosres_ext_final[].
+    APPEND LINES OF  ct_sos_act_pp[]  TO gt_sosact_ext_final[].
+    APPEND LINES OF  ct_sos_bom_pp[]  TO gt_sosbom_ext_final[].
+
+    TYPES : BEGIN OF ty_pp_sos_id,
+              pp_id_old TYPE /ibp/pp_sos_id,
+              pp_id_new TYPE /ibp/pp_sos_id,
+              matnr     TYPE /ibp/matnr,
+            END OF ty_pp_sos_id.
+
+    DATA: lt_pp_sos_id TYPE TABLE OF ty_pp_sos_id,
+          ls_pp_sos_id TYPE ty_pp_sos_id.
+
+    DATA: lv_data   TYPE string,
+          lv_data1  TYPE string,
+          lv_data2  TYPE string,
+          lv_data3  TYPE string,
+          lv_data4  TYPE string,
+          lv_sos_id TYPE /ibp/pp_sos_id.
+    DATA: lv_plant TYPE werks_d.
+    RANGES :lr_pp_sos_id FOR lv_sos_id.
+    CLEAR : lv_data , lv_data1  , lv_data2, lr_pp_sos_id .
+    REFRESH : lr_pp_sos_id .
+
+    DELETE gt_soshead_ext_final  WHERE pp_sos_id EQ ' '.
+    LOOP AT  gt_soshead_ext_final INTO DATA(ls_soshead_ext_final).
+      DATA(lv_len) = strlen( ls_soshead_ext_final-matnr ).
+      CLEAR : lv_data , lv_data1  , lv_data2 ,lv_mv, lv_data3 , lv_data4.
+      CLEAR: ls_pp_sos_id ,lv_plant.
+      ls_pp_sos_id-pp_id_old = ls_soshead_ext_final-pp_sos_id.
+      lr_pp_sos_id-low = ls_pp_sos_id-pp_id_old.
+      lr_pp_sos_id-sign = 'I'.
+      lr_pp_sos_id-option = 'EQ'.
+      APPEND  lr_pp_sos_id.
+      IF lv_len GT 18.
+        lv_data = ls_soshead_ext_final-pp_sos_id+0(40).
+        lv_data1 = ls_soshead_ext_final-pp_sos_id+40(18).
+        lv_data2 =  ls_soshead_ext_final-pp_sos_id+58(2).
+        IF lv_data1 IS NOT INITIAL.
+          lv_plant = lv_data1+0(4).
+        ENDIF.
+        IF lv_plant IN gr_werks[] OR lv_data+0(2) EQ 'TG'.
+          lv_mv =  |{ lv_data }_{ ls_wb2_v_vbak_vbap2-vbeln_i ALPHA = OUT }|.
+        ELSE.
+          lv_mv =  |{ lv_data }_{ ls_wb2_v_vbak_vbap2-vbeln_i ALPHA = OUT }_{ ls_wb2_v_vbak_vbap2-posnr_i ALPHA = OUT }|.
+        ENDIF.
+        CONDENSE lv_mv NO-GAPS.
+        ls_soshead_ext_final-matnr = lv_mv.
+        CONCATENATE  lv_mv lv_data1 lv_data2
+                 INTO ls_soshead_ext_final-pp_sos_id SEPARATED BY space.
+      ELSE.
+        lv_data = ls_soshead_ext_final-pp_sos_id+0(18).
+        lv_data1 = ls_soshead_ext_final-pp_sos_id+18(18).
+        lv_data2 =  ls_soshead_ext_final-pp_sos_id+36(24).
+        CONDENSE: lv_data , lv_data1 , lv_data2 NO-GAPS.
+        IF lv_data1 IS NOT INITIAL.
+          lv_plant = lv_data1+0(4).
+        ENDIF.
+        IF lv_plant IN gr_werks[]  OR lv_data+0(2) EQ 'TG'.
+          lv_mv =  |{ lv_data }_{ ls_wb2_v_vbak_vbap2-vbeln_i ALPHA = OUT }|.
+        ELSE.
+          lv_mv =  |{ lv_data }_{ ls_wb2_v_vbak_vbap2-vbeln_i ALPHA = OUT }_{ ls_wb2_v_vbak_vbap2-posnr_i ALPHA = OUT }|.
+        ENDIF.
+        CONDENSE lv_mv NO-GAPS.
+        ls_soshead_ext_final-matnr = lv_mv.
+        CONCATENATE  lv_mv lv_data1 lv_data2  INTO
+                     ls_soshead_ext_final-pp_sos_id SEPARATED BY space.
+      ENDIF.
+      ls_pp_sos_id-pp_id_new = ls_soshead_ext_final-pp_sos_id.
+      ls_pp_sos_id-matnr     = ls_soshead_ext_final-matnr.
+      lr_pp_sos_id-low = ls_pp_sos_id-pp_id_new.
+      lr_pp_sos_id-sign = 'I'.
+      lr_pp_sos_id-option = 'EQ'.
+      APPEND  lr_pp_sos_id.
+      APPEND ls_pp_sos_id TO lt_pp_sos_id.
+      ls_soshead_ext_final-proc_prio = '1'.
+      MODIFY  gt_soshead_ext_final FROM ls_soshead_ext_final
+      TRANSPORTING pp_sos_id matnr proc_prio.
+      CLEAR:ls_soshead_ext_final,lv_data , lv_data1  , lv_data2 ,lv_mv.
+    ENDLOOP.
+
+    LOOP AT gt_sosres_ext_final INTO DATA(ls_sosres_ext_final).
+*      CLEAR : lv_data , lv_data1  , lv_data2 ,lv_mv.
+*      lv_data = ls_sosres_ext_final-pp_sos_id+0(18).
+*      lv_data1 = ls_sosres_ext_final-pp_sos_id+18(18).
+*      lv_data2 =  ls_sosres_ext_final-pp_sos_id+36(24).
+
+*      SPLIT ls_sosres_ext_final-pp_sos_id AT ' ' INTO lv_data lv_data1 lv_data2.
+*      CONDENSE: lv_data , lv_data1 , lv_data2 NO-GAPS.
+*      lv_mv =  |{ lv_data }_{ ls_wb2_v_vbak_vbap2-vbeln_i ALPHA = OUT }_{ ls_wb2_v_vbak_vbap2-posnr_i ALPHA = OUT }|.
+*      CONDENSE lv_mv NO-GAPS.
+*      CONCATENATE  lv_mv lv_data1 lv_data2  INTO ls_sosres_ext_final-pp_sos_id SEPARATED BY space.
+*      IF ls_sosres_ext_final-bunit_disp EQ 'STD'.
+*        ls_sosres_ext_final-bcons_var = ls_sosres_ext_final-bcons_var / 60 .
+*        ls_sosres_ext_final-bunit_disp = 'MIN'.
+*      ENDIF.
+      CLEAR ls_pp_sos_id.
+      READ TABLE lt_pp_sos_id INTO ls_pp_sos_id WITH KEY pp_id_old = ls_sosres_ext_final-pp_sos_id.
+      IF sy-subrc EQ 0.
+        ls_sosres_ext_final-pp_sos_id = ls_pp_sos_id-pp_id_new.
+      ENDIF.
+      MODIFY  gt_sosres_ext_final FROM ls_sosres_ext_final TRANSPORTING pp_sos_id ."bcons_var.
+      CLEAR:ls_sosres_ext_final,lv_data , lv_data1  , lv_data2 ,lv_mv.
+    ENDLOOP.
+    IF gt_sosbom_ext_final IS NOT INITIAL.
+      SELECT
+      matnr,
+      werks
+      FROM marc
+      INTO TABLE @DATA(lt_marc_w)
+      FOR ALL ENTRIES IN @gt_sosbom_ext_final
+      WHERE matnr EQ @gt_sosbom_ext_final-matnr
+      AND   werks IN @gr_werks[].
+    ENDIF.
+*    REFRESH rt_matnr.
+    LOOP AT gt_sosbom_ext_final INTO DATA(ls_sosbom_ext_final).
+      CLEAR : lv_data , lv_data1  , lv_data2 ,lv_mv.
+
+*      lv_data = ls_sosbom_ext_final-pp_sos_id+0(18).
+*      lv_data1 = ls_sosbom_ext_final-pp_sos_id+18(18).
+*      lv_data2 =  ls_sosbom_ext_final-pp_sos_id+36(24).
+*      SPLIT ls_sosbom_ext_final-pp_sos_id  AT ' ' INTO lv_data lv_data1 lv_data2.
+*      CONDENSE: lv_data , lv_data1 , lv_data2 NO-GAPS.
+*      lv_mv =  |{ lv_data }_{ ls_wb2_v_vbak_vbap2-vbeln_i ALPHA = OUT }_{ ls_wb2_v_vbak_vbap2-posnr_i ALPHA = OUT }|.
+*      CONDENSE lv_mv NO-GAPS.
+*      CONCATENATE  lv_mv lv_data1 lv_data2  INTO ls_sosbom_ext_final-pp_sos_id SEPARATED BY space.
+      READ TABLE lt_marc_w TRANSPORTING NO FIELDS WITH KEY matnr = ls_sosbom_ext_final-matnr.
+      IF sy-subrc EQ 0  OR  ls_sosbom_ext_final-matnr+0(2) EQ 'TG'.
+        ls_sosbom_ext_final-matnr = |{ ls_sosbom_ext_final-matnr }_{ ls_wb2_v_vbak_vbap2-vbeln_i ALPHA = OUT  }|.
+      ELSE.
+        ls_sosbom_ext_final-matnr = |{ ls_sosbom_ext_final-matnr }_{ ls_wb2_v_vbak_vbap2-vbeln_i ALPHA = OUT }_{ ls_wb2_v_vbak_vbap2-posnr_i ALPHA = OUT }|.
+      ENDIF.
+*
+      CONDENSE ls_sosbom_ext_final-matnr NO-GAPS.
+      CLEAR ls_pp_sos_id.
+      READ TABLE lt_pp_sos_id INTO ls_pp_sos_id WITH KEY pp_id_old = ls_sosbom_ext_final-pp_sos_id.
+      IF sy-subrc EQ 0.
+        ls_sosbom_ext_final-pp_sos_id = ls_pp_sos_id-pp_id_new.
+*        ls_sosbom_ext_final-matnr = ls_pp_sos_id-matnr.
+      ENDIF.
+      MODIFY  gt_sosbom_ext_final FROM ls_sosbom_ext_final TRANSPORTING pp_sos_id matnr.
+      CLEAR:ls_sosbom_ext_final,lv_data , lv_data1  , lv_data2 ,lv_mv.
+    ENDLOOP.
+
+
+    LOOP AT gt_sosact_ext_final INTO DATA(ls_sosact_ext_final).
+      CLEAR : lv_data , lv_data1  , lv_data2 ,lv_mv.
+*      lv_data = ls_sosact_ext_final-pp_sos_id+0(18).
+*      lv_data1 = ls_sosact_ext_final-pp_sos_id+18(18).
+*      lv_data2 =  ls_sosact_ext_final-pp_sos_id+36(24).
+
+*      SPLIT ls_sosact_ext_final-pp_sos_id AT ' ' INTO lv_data lv_data1 lv_data2.
+*      CONDENSE: lv_data , lv_data1 , lv_data2 NO-GAPS.
+*      lv_mv =  |{ lv_data }_{ ls_wb2_v_vbak_vbap2-vbeln_i ALPHA = OUT }_{ ls_wb2_v_vbak_vbap2-posnr_i ALPHA = OUT }|.
+*      CONDENSE lv_mv NO-GAPS.
+*      CONCATENATE  lv_mv lv_data1 lv_data2  INTO ls_sosact_ext_final-pp_sos_id SEPARATED BY space.
+      CLEAR ls_pp_sos_id.
+      READ TABLE lt_pp_sos_id INTO ls_pp_sos_id WITH KEY pp_id_old = ls_sosact_ext_final-pp_sos_id.
+      IF sy-subrc EQ 0.
+        ls_sosact_ext_final-pp_sos_id = ls_pp_sos_id-pp_id_new.
+*        ls_sosact_ext_final-act_dur_fix = '0'.
+      ENDIF.
+
+      MODIFY gt_sosact_ext_final FROM ls_sosact_ext_final TRANSPORTING pp_sos_id act_dur_fix.
+      CLEAR:ls_sosact_ext_final,lv_data , lv_data1  , lv_data2 ,lv_mv.
+    ENDLOOP.
+
+    DATA: "lv_matnr(40)  TYPE c,
+          lv_remain(40) TYPE c.
+*    DATA: "lr_matnr1 TYPE curto_matnr_range_t.
+    DATA: wa_r1        TYPE curto_matnr_range.
+    CLEAR : lv_matnr , lv_remain.
+    SORT gt_kmat_mv_mara_ext_final  BY matnr.
+    SORT  gt_sosbom_ext_final   BY matnr.
+    SORT   gt_soshead_ext_final BY matnr.
+
+    PERFORM check_mara_bom_mat_del.
+
+*    FIELD-SYMBOLS :<lfs_head_data> TYPE /ibp/soshead_ext.
+*    UNASSIGN :<lfs_head_data>.
+*    LOOP AT gt_soshead_ext_final ASSIGNING <lfs_head_data>.
+*      <lfs_head_data>-proc_prio = '1'.
+*    ENDLOOP.
+
+
+*    SORT gt_kmat_mv_marc_ext_final  BY matnr.
+*    SORT  gt_sosbom_ext_final   BY matnr.
+*    SORT   gt_soshead_ext_final BY matnr.
+*    CLEAR : lv_matnr , lv_remain , lv_index1.
+*    LOOP AT gt_kmat_mv_marc_ext_final INTO DATA(ls_marc_ext1).
+*      lv_index1 = sy-tabix.
+*      READ TABLE gt_sosbom_ext_final INTO ls_sosbom_ext WITH KEY matnr = ls_marc_ext1-matnr.
+*      IF sy-subrc NE 0.
+*        SPLIT ls_marc_ext1-matnr AT '_' INTO lv_matnr lv_remain.
+*        LOOP AT gt_soshead_ext_final INTO ls_soshead_ext WHERE matnr = ls_marc_ext1-matnr..
+*          EXIT.
+*        ENDLOOP.
+*        IF sy-subrc NE 0.
+*          DELETE gt_kmat_mv_marc_ext_final INDEX lv_index1.
+*        ENDIF.
+*      ENDIF.
+*    ENDLOOP.
+*    gr_mv = VALUE #( FOR line1 IN gt_kmat_mv_mara_ext_final ( sign = 'I' option = 'EQ' low = line1-matnr ) ).
+*    gr_mv =
+
+*    ENDIF.
+    PERFORM create_tlane.
+    PERFORM save_pds.
+
+
+
+
+*      CLEAR LV_RC.
+  ENDIF.
+  CLEAR lv_rc.
+  INCLUDE zibp_md_construct_new_ext.
+*   Endif.
+*    IF ex_kmat_mv[] IS NOT INITIAL.
+*      DATA(lt_kmat_mv_for_mara) = ex_kmat_mv[].
+*      SORT lt_kmat_mv_for_mara BY material_variant.
+*      DELETE ADJACENT DUPLICATES FROM lt_kmat_mv_for_mara COMPARING material_variant.
+*      TRY.
+*          CALL METHOD zibp_amdp=>get_addon_ext
+*            EXPORTING
+*              im_kmats_mv    = ex_kmat_mv[]
+*            IMPORTING
+*              ex_mara_ext    = ex_mara_ext[]
+*              ex_marc_ext    = ex_marc_ext[]
+*              ex_makt_ext    = ex_makt_ext[]
+*              ex_soshead_ext = ex_soshead_ext[]
+*              ex_sosres_ext  = ex_sosres_ext[]
+*              ex_sosact_ext  = ex_sosact_ext[]
+*              ex_sosbom_ext  = ex_sosbom_ext[]
+*              ex_tlane_ext   = ex_tlane_ext[].
+*          gt_kmat_mv             = ex_kmat_mv.
+*          gt_kmat_mv_mara_ext    = ex_mara_ext.
+*          gt_kmat_mv_marc_ext    = ex_marc_ext.
+*          gt_kmat_mv_makt_ext    = ex_makt_ext.
+*          gt_soshead_ext         = ex_soshead_ext.
+*          gt_sosres_ext          = ex_sosres_ext.
+*          gt_sosact_ext          = ex_sosact_ext.
+*          gt_sosbom_ext          = ex_sosbom_ext.
+*          gt_tlane_ext           =  ex_tlane_ext.
+*          APPEND LINES OF gt_kmat_mv[]          TO gt_kmat_mv_final[].
+*          APPEND LINES OF gt_kmat_mv_mara_ext[] TO gt_kmat_mv_mara_ext_final[].
+*          APPEND LINES OF gt_kmat_mv_marc_ext[] TO gt_kmat_mv_marc_ext_final[].
+*          APPEND LINES OF gt_kmat_mv_makt_ext[] TO gt_kmat_mv_makt_ext_final[].
+*          APPEND LINES OF gt_soshead_ext[]      TO gt_soshead_ext_final[].
+*          APPEND LINES OF gt_sosres_ext[]       TO gt_sosres_ext_final[].
+*          APPEND LINES OF gt_sosact_ext[]       TO gt_sosact_ext_final[].
+*          APPEND LINES OF gt_sosbom_ext[]       TO gt_sosbom_ext_final[].
+*          APPEND LINES OF gt_tlane_ext[]        TO gt_tlane_ext_final[].
+*          CLEAR gt_kmat_mv[].
+*          CLEAR gt_kmat_mv_mara_ext[].
+*          CLEAR gt_kmat_mv_marc_ext[].
+*          CLEAR gt_kmat_mv_makt_ext[].
+*          CLEAR : gt_soshead_ext[],
+*          gt_sosres_ext[], gt_sosact_ext[], gt_sosbom_ext[],gt_tlane_ext[].
+*        CATCH cx_amdp_error INTO DATA(amdp_error).
+*          DATA(error_text) = amdp_error->get_longtext( ).
+*      ENDTRY.
+*    ELSE.
+*      MESSAGE i002(zibp).
+*    ENDIF.
+*    DELETE ex_kmat_mv    WHERE child_item = gc_x.
+*    DELETE ex_sosbom_ext WHERE matnr      = gc_x.
+*    IF gt_kmat_mv_mara_ext_final IS NOT INITIAL.
+*      CLEAR:
+*      it_rto_components,
+*      it_rto_opr_of_seq,
+*      it_rto_modes,
+*      it_rto_planoprt,
+*      it_rto_trprod,
+*      it_rto_activities,
+*      it_rto_reqcaps,
+*      ct_sos_head_pp,
+*      ct_sos_bom_pp,
+*      ct_sos_res_pp,
+*      ct_sos_act_pp.
+*      DATA: wa_r        TYPE curto_matnr_range,
+*            lv_char(20) TYPE c. "LV_matnr  TYPE matnr.
+*      DATA: lr_matnr TYPE curto_matnr_range_t."FOR lv_matnr.
+*      DATA: lr_matnr1 TYPE curto_matnr_range_t."FOR lv_matnr.
+*      DATA  : it_selection TYPE TABLE OF rsparams.
+*      DATA  : wa_selection LIKE LINE OF it_selection.
+*      DATA: jobname LIKE tbtcjob-jobname VALUE
+*                             'TRANSFER DATA'.
+*      DATA: jobcount LIKE tbtcjob-jobcount,
+*            host     LIKE msxxlist-host.
+*      DATA: BEGIN OF starttime.
+*              INCLUDE STRUCTURE tbtcstrt.
+*      DATA: END OF starttime.
+*      DATA: starttimeimmediate LIKE btch0000-char1 VALUE 'X'.
+*      LOOP AT gt_kmat_mv_mara_ext_final INTO DATA(ls_mara_ext).
+*        READ TABLE gt_kmat_mv_marc_ext_final INTO DATA(ls_marc_ext) WITH KEY matnr = ls_mara_ext-matnr
+*                                                                             sobsl = '50'.
+*        IF sy-subrc NE 0.
+*          CLEAR lv_char.
+*          REFRESH  lr_matnr.
+*          SPLIT ls_mara_ext-matnr AT '_' INTO wa_r-low lv_char.
+**      wa_r-low = ls_mara_ext-matnr.
+*          wa_r-sign = 'I'.
+*          wa_r-option = 'EQ'.
+*          APPEND wa_r TO lr_matnr.
+*          APPEND wa_r TO lr_matnr1.
+*          CALL FUNCTION 'JOB_OPEN'
+*            EXPORTING
+*              delanfrep        = ' '
+*              jobgroup         = ' '
+*              jobname          = jobname
+*              sdlstrtdt        = sy-datum
+*              sdlstrttm        = sy-uzeit
+*            IMPORTING
+*              jobcount         = jobcount
+*            EXCEPTIONS
+*              cant_create_job  = 01
+*              invalid_job_data = 02
+*              jobname_missing  = 03.
+*          IF sy-subrc NE 0.
+*            "error processing
+*          ENDIF.
+** Insert process into job
+*          SUBMIT /ibp/ecc_send_material AND RETURN
+*                         WITH so_matnr = wa_r-low
+*                         USER sy-uname
+*                         VIA JOB jobname
+*                         NUMBER jobcount.
+*          IF sy-subrc > 0.
+*
+*            "error processing
+*          ENDIF.
+** Close job
+*          starttime-sdlstrtdt = sy-datum + 1.
+*          starttime-sdlstrttm = '220000'.
+*          CALL FUNCTION 'JOB_CLOSE'
+*            EXPORTING
+*              "            event_id             = starttime-eventid
+*              "            event_param          = starttime-eventparm
+*              "            event_periodic       = starttime-periodic
+*              jobcount             = jobcount
+*              jobname              = jobname
+*  "           laststrtdt           = starttime-laststrtdt
+*  "           laststrttm           = starttime-laststrttm
+*  "           prddays              = 1
+*  "           prdhours             = 0
+*  "           prdmins              = 0
+*  "           prdmonths            = 0
+*  "           prdweeks             = 0
+*  "           sdlstrtdt            = starttime-sdlstrtdt
+*  "           sdlstrttm            = starttime-sdlstrttm
+*              strtimmed            = starttimeimmediate
+*  "           targetsystem         = host
+*            EXCEPTIONS
+*              cant_start_immediate = 01
+*              invalid_startdate    = 02
+*              jobname_missing      = 03
+*              job_close_failed     = 04
+*              job_nosteps          = 05
+*              job_notex            = 06
+*              lock_failed          = 07
+*              OTHERS               = 99.
+*          IF sy-subrc EQ 0.
+*            "error processing
+*          ENDIF.
+*          TRY .
+*              CALL FUNCTION 'ZFM_IBP_PDS_SAVE'
+*                EXPORTING
+*                  matnr = lr_matnr.
+*            CATCH cx_root INTO DATA(lv_text).
+*          ENDTRY.
+*          CLEAR:
+*          it_rto_components,
+*          it_rto_opr_of_seq,
+*          it_rto_modes,
+*          it_rto_planoprt,
+*          it_rto_trprod,
+*          it_rto_activities,
+*          it_rto_reqcaps,
+*          ct_sos_head_pp,
+*          ct_sos_bom_pp,
+*          ct_sos_res_pp,
+*          ct_sos_act_pp.
+*          APPEND LINES OF zcl_ibp_ecc_change_pds=>it_rto_components  TO it_rto_components.
+*          APPEND LINES OF zcl_ibp_ecc_change_pds=>it_rto_opr_of_seq  TO it_rto_opr_of_seq.
+*          APPEND LINES OF zcl_ibp_ecc_change_pds=>it_rto_modes       TO it_rto_modes .
+*          APPEND LINES OF zcl_ibp_ecc_change_pds=>it_rto_planoprt    TO it_rto_planoprt.
+*          APPEND LINES OF zcl_ibp_ecc_change_pds=>it_rto_trprod      TO it_rto_trprod.
+*          APPEND LINES OF zcl_ibp_ecc_change_pds=>it_rto_activities  TO it_rto_activities.
+*          APPEND LINES OF zcl_ibp_ecc_change_pds=>it_rto_reqcaps     TO it_rto_reqcaps.
+*          APPEND LINES OF zcl_ibp_ecc_change_pds=>cs_sos_head_pp     TO ct_sos_head_pp.
+*          APPEND LINES OF zcl_ibp_ecc_change_pds=>ct_sos_bom_pp      TO ct_sos_bom_pp.
+*          APPEND LINES OF zcl_ibp_ecc_change_pds=>ct_sos_res_pp      TO ct_sos_res_pp.
+*          APPEND LINES OF zcl_ibp_ecc_change_pds=>ct_sos_act_pp      TO ct_sos_act_pp.
+*          DELETE ADJACENT DUPLICATES FROM it_rto_components   COMPARING ALL FIELDS.
+*          DELETE ADJACENT DUPLICATES FROM it_rto_opr_of_seq   COMPARING ALL FIELDS.
+*          DELETE ADJACENT DUPLICATES FROM it_rto_modes        COMPARING ALL FIELDS.
+*          DELETE ADJACENT DUPLICATES FROM it_rto_planoprt     COMPARING ALL FIELDS.
+*          DELETE ADJACENT DUPLICATES FROM it_rto_activities   COMPARING ALL FIELDS.
+*          DELETE ADJACENT DUPLICATES FROM it_rto_reqcaps      COMPARING ALL FIELDS.
+*          SORT ct_sos_head_pp BY pp_sos_id.
+*          DELETE ADJACENT DUPLICATES FROM ct_sos_head_pp      COMPARING ALL FIELDS.
+*          SORT ct_sos_res_pp BY pp_sos_id.
+*          DELETE ADJACENT DUPLICATES FROM ct_sos_res_pp       COMPARING ALL FIELDS.
+*          SORT ct_sos_bom_pp  BY pp_sos_id matnr.
+*          DELETE ADJACENT DUPLICATES FROM ct_sos_bom_pp       COMPARING ALL FIELDS.
+*          SORT ct_sos_act_pp BY pp_sos_id.
+*          DELETE ADJACENT DUPLICATES FROM ct_sos_act_pp       COMPARING ALL FIELDS.
+**      sort it_rto_trprod by pp_sos_id.
+*          DELETE ADJACENT DUPLICATES FROM it_rto_trprod       COMPARING ALL FIELDS.
+*          DELETE ct_sos_bom_pp WHERE matnr NOT IN lr_matnr1.
+*        ENDIF.
+*      ENDLOOP.
+*
+*    ENDIF.
+*    IF lr_matnr1 IS NOT INITIAL.
+*      CALL FUNCTION 'ENQUEUE_E_TABLE'
+*        EXPORTING
+*          tabname        = '/IBP/MARA_EXT'
+*        EXCEPTIONS
+*          foreign_lock   = 1
+*          system_failure = 2
+*          OTHERS         = 3.
+*      DELETE FROM /ibp/mara_ext WHERE matnr IN lr_matnr1.
+*      CALL FUNCTION 'DEQUEUE_E_TABLE'
+*        EXPORTING
+*          tabname = '/IBP/MARA_EXT'.
+*      CALL FUNCTION 'ENQUEUE_E_TABLE'
+*        EXPORTING
+*          tabname        = '/IBP/MAKT_EXT'
+*        EXCEPTIONS
+*          foreign_lock   = 1
+*          system_failure = 2
+*          OTHERS         = 3.
+*
+*      DELETE FROM /ibp/makt_ext WHERE matnr IN lr_matnr1.
+*
+*      CALL FUNCTION 'DEQUEUE_E_TABLE'
+*        EXPORTING
+*          tabname = '/IBP/MAKT_EXT'.
+*
+*
+*      CALL FUNCTION 'ENQUEUE_E_TABLE'
+*        EXPORTING
+*          tabname        = '/IBP/MARC_EXT'
+*        EXCEPTIONS
+*          foreign_lock   = 1
+*          system_failure = 2
+*          OTHERS         = 3.
+*      DELETE FROM /ibp/marc_ext WHERE matnr IN lr_matnr1.
+*      CALL FUNCTION 'DEQUEUE_E_TABLE'
+*        EXPORTING
+*          tabname = '/IBP/MARC_EXT'.
+*
+*
+*
+*    ENDIF.
+
+*    CLEAR:
+*    gt_soshead_ext_final,
+*    gt_sosres_ext_final,
+*    gt_sosact_ext_final,
+*    gt_sosbom_ext_final.
+*
+*    APPEND LINES OF  ct_sos_head_pp[] TO gt_soshead_ext_final[].
+*    APPEND LINES OF  ct_sos_res_pp[]  TO gt_sosres_ext_final[].
+*    APPEND LINES OF  ct_sos_act_pp[]  TO gt_sosact_ext_final[].
+*    APPEND LINES OF  ct_sos_bom_pp[]  TO gt_sosbom_ext_final[].
+*
+*
+*    DATA: lv_data  TYPE string,
+*          lv_data1 TYPE string,
+*          lv_data2 TYPE string.
+*    CLEAR : lv_data , lv_data1  , lv_data2.
+*
+*    LOOP AT  gt_soshead_ext_final INTO DATA(ls_soshead_ext_final).
+*      CLEAR : lv_data , lv_data1  , lv_data2 ,lv_mv.
+*      SPLIT ls_soshead_ext_final-pp_sos_id AT ' ' INTO lv_data lv_data1 lv_data2.
+*      lv_mv =  |{ lv_data }_{ ls_wb2_v_vbak_vbap2-vbeln_i ALPHA = OUT }_{ ls_wb2_v_vbak_vbap2-posnr_i ALPHA = OUT }|.
+*      CONDENSE lv_mv NO-GAPS.
+*      CONCATENATE  lv_mv lv_data1 lv_data2  INTO ls_soshead_ext_final-pp_sos_id SEPARATED BY space.
+*      ls_soshead_ext_final-matnr = lv_mv.
+*      MODIFY  gt_soshead_ext_final FROM ls_soshead_ext_final TRANSPORTING pp_sos_id matnr.
+*      CLEAR:ls_soshead_ext_final,lv_data , lv_data1  , lv_data2 ,lv_mv.
+*    ENDLOOP.
+*
+*    LOOP AT gt_sosres_ext_final INTO DATA(ls_sosres_ext_final).
+*      CLEAR : lv_data , lv_data1  , lv_data2 ,lv_mv.
+*      SPLIT ls_sosres_ext_final-pp_sos_id AT ' ' INTO lv_data lv_data1 lv_data2.
+*      lv_mv =  |{ lv_data }_{ ls_wb2_v_vbak_vbap2-vbeln_i ALPHA = OUT }_{ ls_wb2_v_vbak_vbap2-posnr_i ALPHA = OUT }|.
+*      CONDENSE lv_mv NO-GAPS.
+*      CONCATENATE  lv_mv lv_data1 lv_data2  INTO ls_sosres_ext_final-pp_sos_id SEPARATED BY space.
+**      IF ls_sosres_ext_final-bunit_disp EQ 'STD'.
+**        ls_sosres_ext_final-bcons_var = ls_sosres_ext_final-bcons_var / 60 .
+**        ls_sosres_ext_final-bunit_disp = 'MIN'.
+**      ENDIF.
+*      MODIFY  gt_sosres_ext_final FROM ls_sosres_ext_final TRANSPORTING pp_sos_id bcons_var.
+*      CLEAR:ls_sosres_ext_final,lv_data , lv_data1  , lv_data2 ,lv_mv.
+*    ENDLOOP.
+*
+**    REFRESH rt_matnr.
+*    LOOP AT gt_sosbom_ext_final INTO DATA(ls_sosbom_ext_final).
+*      CLEAR : lv_data , lv_data1  , lv_data2 ,lv_mv.
+*      SPLIT ls_sosbom_ext_final-pp_sos_id  AT ' ' INTO lv_data lv_data1 lv_data2.
+*      lv_mv =  |{ lv_data }_{ ls_wb2_v_vbak_vbap2-vbeln_i ALPHA = OUT }_{ ls_wb2_v_vbak_vbap2-posnr_i ALPHA = OUT }|.
+*      CONDENSE lv_mv NO-GAPS.
+*      CONCATENATE  lv_mv lv_data1 lv_data2  INTO ls_sosbom_ext_final-pp_sos_id SEPARATED BY space.
+*      ls_sosbom_ext_final-matnr = |{ ls_sosbom_ext_final-matnr }_{ ls_wb2_v_vbak_vbap2-vbeln_i ALPHA = OUT }_{ ls_wb2_v_vbak_vbap2-posnr_i ALPHA = OUT }|.
+*      CONDENSE ls_sosbom_ext_final-matnr NO-GAPS.
+*      MODIFY  gt_sosbom_ext_final FROM ls_sosbom_ext_final TRANSPORTING pp_sos_id matnr.
+*      CLEAR:ls_sosbom_ext_final,lv_data , lv_data1  , lv_data2 ,lv_mv.
+*    ENDLOOP.
+*
+*
+*    LOOP AT gt_sosact_ext_final INTO DATA(ls_sosact_ext_final).
+*      CLEAR : lv_data , lv_data1  , lv_data2 ,lv_mv.
+*      SPLIT ls_sosact_ext_final-pp_sos_id AT ' ' INTO lv_data lv_data1 lv_data2.
+*      lv_mv =  |{ lv_data }_{ ls_wb2_v_vbak_vbap2-vbeln_i ALPHA = OUT }_{ ls_wb2_v_vbak_vbap2-posnr_i ALPHA = OUT }|.
+*      CONDENSE lv_mv NO-GAPS.
+*      CONCATENATE  lv_mv lv_data1 lv_data2  INTO ls_sosact_ext_final-pp_sos_id SEPARATED BY space.
+*      MODIFY gt_sosact_ext_final FROM ls_sosact_ext_final TRANSPORTING pp_sos_id.
+*      CLEAR:ls_sosact_ext_final,lv_data , lv_data1  , lv_data2 ,lv_mv.
+*    ENDLOOP.
+*
+*    DATA: lv_matnr(40)  TYPE c,
+*          lv_remain(40) TYPE c.
+*    CLEAR : lv_matnr , lv_remain.
+*    SORT gt_kmat_mv_mara_ext_final  BY matnr.
+*    SORT  gt_sosbom_ext_final   BY matnr.
+*    SORT   gt_soshead_ext_final BY matnr.
+*    LOOP AT gt_kmat_mv_mara_ext_final INTO DATA(ls_mara_ext1).
+*      DATA(lv_index1) = sy-tabix.
+*      READ TABLE gt_sosbom_ext_final INTO DATA(ls_sosbom_ext) WITH KEY matnr = ls_mara_ext1-matnr.
+*      IF sy-subrc NE 0.
+*        SPLIT ls_mara_ext1-matnr AT '_' INTO lv_matnr lv_remain.
+*        LOOP AT gt_soshead_ext_final INTO DATA(ls_soshead_ext) WHERE matnr CS  lv_matnr.
+*        ENDLOOP.
+*        IF sy-subrc NE 0.
+*          DELETE gt_kmat_mv_mara_ext_final INDEX lv_index1.
+*        ENDIF.
+*      ENDIF.
+*    ENDLOOP.
+*    FIELD-SYMBOLS :<lfs_head_data> TYPE /ibp/soshead_ext.
+*    UNASSIGN :<lfs_head_data>.
+*    LOOP AT gt_soshead_ext_final ASSIGNING <lfs_head_data>.
+*      <lfs_head_data>-proc_prio = '1'.
+*    ENDLOOP.
+*
+*
+*    SORT gt_kmat_mv_marc_ext_final  BY matnr.
+*    SORT  gt_sosbom_ext_final   BY matnr.
+*    SORT   gt_soshead_ext_final BY matnr.
+*    CLEAR : lv_matnr , lv_remain , lv_index1.
+*    LOOP AT gt_kmat_mv_marc_ext_final INTO DATA(ls_marc_ext1).
+*      lv_index1 = sy-tabix.
+*      READ TABLE gt_sosbom_ext_final INTO ls_sosbom_ext WITH KEY matnr = ls_marc_ext1-matnr.
+*      IF sy-subrc NE 0.
+*        SPLIT ls_marc_ext1-matnr AT '_' INTO lv_matnr lv_remain.
+*        LOOP AT gt_soshead_ext_final INTO ls_soshead_ext WHERE matnr CS  lv_matnr.
+*        ENDLOOP.
+*        IF sy-subrc NE 0.
+*          DELETE gt_kmat_mv_marc_ext_final INDEX lv_index1.
+*        ENDIF.
+*      ENDIF.
+*    ENDLOOP.
+*
+*    DATA: lv_BESKZ TYPE beskz,
+*          lv_sobsl TYPE /ibp/sobsl.
+*    RANGES: r_BESKZ FOR lv_beskz,
+*            r_sobsl FOR lv_sobsl.
+*    TYPES: BEGIN OF ty_marc,
+*             logsys  TYPE logsys,
+*             matnr   TYPE /ibp/matnr,
+*             locno   TYPE werks_d,
+*             loctype TYPE /ibp/loctype,
+*             plifz   TYPE plifz,
+*             beskz   TYPE beskz,
+*             sobsl   TYPE /ibp/sobsl,
+*             matnr1  TYPE matnr,
+*           END OF ty_marc.
+*
+*
+*
+*    DATA:lt_marc_temp  TYPE STANDARD TABLE OF /ibp/marc_ext.
+*    DATA:lt_marc_temp_r  TYPE STANDARD TABLE OF /ibp/marc_ext.
+*    DATA:lt_marc_temp1  TYPE STANDARD TABLE OF ty_marc.
+*    DATA:lt_marc_temp2  TYPE STANDARD TABLE OF ty_marc.
+*    DATA:ls_marc_temp1  TYPE  ty_marc.
+*    DATA:lt_marc_null  TYPE STANDARD TABLE OF ty_marc.
+*    DATA:lt_marc_valu  TYPE STANDARD TABLE OF ty_marc.
+*    DATA:ls_tlane    TYPE /ibp/tlane_ext.
+*
+*
+*    r_BESKZ-low = 'F'.
+*    r_BESKZ-sign = 'I'.
+*    r_BESKZ-option = 'EQ'.
+*    APPEND  r_BESKZ.
+*
+*    r_sobsl-low = ' '.
+*    r_sobsl-sign = 'I'.
+*    r_sobsl-option = 'EQ'.
+*    APPEND  r_sobsl.
+*
+**    DELETE  gt_kmat_mv_mara_ext_final WHERE matnr_ext NOT IN rt_matnr.
+*    APPEND LINES OF gt_kmat_mv_marc_ext_final TO lt_marc_temp.
+*
+*    LOOP AT lt_marc_temp INTO DATA(ls_marc_temp).
+*      CLEAR ls_marc_temp1 .
+**      READ TABLE gt_kmat_mv_mara_ext_final INTO DATA(ls_data) WITH KEY matnr = ls_marc_temp-matnr.
+**      IF sy-subrc EQ 0.
+*      ls_marc_temp1-logsys = ls_marc_temp-logsys.
+*      ls_marc_temp1-matnr  = ls_marc_temp-matnr.
+*      ls_marc_temp1-locno  = ls_marc_temp-locno.
+*      ls_marc_temp1-loctype = ls_marc_temp-loctype.
+*      ls_marc_temp1-plifz  = ls_marc_temp-plifz.
+*      ls_marc_temp1-beskz  = ls_marc_temp-beskz.
+*      ls_marc_temp1-sobsl  = ls_marc_temp-sobsl.
+*      SPLIT ls_marc_temp1-matnr AT '_' INTO ls_marc_temp1-matnr1 lv_char.
+*      APPEND ls_marc_temp1 TO lt_marc_temp1.
+*      APPEND ls_marc_temp1 TO lt_marc_temp2.
+*      CLEAR ls_marc_temp1.
+**      ENDIF.
+*    ENDLOOP.
+*    gt_kmat_mv_marc_ext_final[] = lt_marc_temp[].
+*    DELETE lt_marc_temp1 WHERE beskz NOT  IN r_beskz.
+*
+*    REFRESH r_beskz.
+*    r_BESKZ-low = 'X'.
+*    r_BESKZ-sign = 'I'.
+*    r_BESKZ-option = 'EQ'.
+*    APPEND  r_BESKZ.
+*
+*    DELETE lt_marc_temp2 WHERE beskz NOT  IN r_beskz.
+*
+*    APPEND LINES OF lt_marc_temp1  TO lt_marc_null.
+*
+*    DELETE lt_marc_null WHERE sobsl NOT IN r_sobsl.
+*
+*    APPEND LINES OF lt_marc_temp1  TO lt_marc_valu.
+*
+*    DELETE lt_marc_valu WHERE sobsl  IN r_sobsl.
+*
+*    IF lt_marc_valu IS NOT INITIAL.
+*      SORT lt_marc_valu BY locno sobsl.
+*      SELECT *
+*      FROM t460a
+*      INTO TABLE @DATA(lt_t460a)
+*      FOR ALL ENTRIES IN @lt_marc_valu
+*      WHERE werks EQ @lt_marc_valu-locno
+*      AND   sobsl EQ @lt_marc_valu-sobsl.
+*    ENDIF.
+*    CLEAR ls_marc_temp1.
+*    LOOP AT lt_marc_valu  INTO ls_marc_temp1.
+*      ls_tlane-logsys     = ls_marc_temp1-logsys.
+*      ls_tlane-matnr      = ls_marc_temp1-matnr.
+*      ls_tlane-locno_to   = ls_marc_temp1-locno.
+*      ls_tlane-loctype_to = ls_marc_temp1-loctype.
+*      ls_tlane-esokz      = '7'.
+*      READ TABLE lt_t460a INTO DATA(ls_t460a) WITH KEY werks = ls_marc_temp1-locno
+*                                                       sobsl = ls_marc_temp1-sobsl.
+*      IF sy-subrc EQ 0.
+*        ls_tlane-locno_from =  ls_t460a-wrk02.
+*      ENDIF.
+*      ls_tlane-loctype_from   = ls_marc_temp1-loctype.
+*      ls_tlane-ekorg          = ' '.
+*      ls_tlane-mot_id         = 'DEF'.
+*      ls_tlane-counter        = '00001'.
+*      ls_tlane-lifab          = '19700101'.
+*      ls_tlane-lifbi          = '99991231'.
+*      ls_tlane-creation_mode  = 'M'.
+*      APPEND ls_tlane TO gt_tlane_ext_final.
+*      CLEAR ls_marc_temp1.
+*    ENDLOOP.
+*    IF lt_marc_null IS NOT INITIAL.
+*      SORT lt_marc_null BY matnr.
+*      SELECT *
+*      FROM eina
+*      INTO TABLE @DATA(lt_eina)
+*      FOR ALL ENTRIES IN @lt_marc_null
+*      WHERE matnr EQ @lt_marc_null-matnr1.
+*      IF lt_eina IS NOT INITIAL.
+*        SELECT *
+*        FROM eine
+*        INTO TABLE @DATA(lt_eine)
+*        FOR ALL ENTRIES IN @lt_eina
+*        WHERE infnr = @lt_eina-infnr.
+*      ENDIF.
+*    ENDIF.
+*    CLEAR ls_marc_temp1.
+*    SORT lt_marc_temp1 BY matnr beskz.
+*    LOOP AT lt_marc_null INTO ls_marc_temp1.
+*      ls_tlane-logsys     = ls_marc_temp1-logsys.
+*      ls_tlane-matnr      = ls_marc_temp1-matnr.
+*      ls_tlane-locno_to   = ls_marc_temp1-locno.
+*      ls_tlane-loctype_to = ls_marc_temp1-loctype.
+*      ls_tlane-esokz      = '0'.
+*      READ TABLE lt_eina INTO DATA(ls_eina) WITH KEY matnr = ls_marc_temp1-matnr1.
+*      IF sy-subrc EQ 0.
+*        READ TABLE lt_eine INTO DATA(ls_eine) WITH  KEY infnr = ls_eina-infnr werks = ls_marc_temp1-locno.
+*        IF sy-subrc EQ 0.
+*          ls_tlane-locno_from =  ls_eina-lifnr.
+*          ls_tlane-loctype_from   = 'V'.
+*          ls_tlane-ekorg          = ' '.
+*          ls_tlane-mot_id         = 'DEF'.
+*          ls_tlane-counter        = '00001'.
+*          ls_tlane-lifab          = '19700101'.
+*          ls_tlane-lifbi          = '99991231'.
+*          ls_tlane-creation_mode  = 'M'.
+*          APPEND ls_tlane TO gt_tlane_ext_final.
+*        ENDIF.
+*      ELSE.
+*        CLEAR : ls_marc_temp , lt_marc_temp_r.
+*        lt_marc_temp_r[] = lt_marc_temp[].
+*        SORT lt_marc_temp_r BY locno.
+*        DELETE lt_marc_temp_r WHERE locno EQ ls_marc_temp1-locno.
+*        SORT lt_marc_temp_r BY matnr beskz.
+*        LOOP AT  lt_marc_temp_r  INTO ls_marc_temp WHERE matnr = ls_marc_temp1-matnr    AND beskz = 'E'  .
+*          ls_tlane-locno_from = ls_marc_temp-locno.
+*          ls_tlane-loctype_from   = 'P'.
+*          ls_tlane-ekorg          = ' '.
+*          ls_tlane-mot_id         = 'DEF'.
+*          ls_tlane-counter        = '00001'.
+*          ls_tlane-lifab          = '19700101'.
+*          ls_tlane-lifbi          = '99991231'.
+*          ls_tlane-creation_mode  = 'M'.
+*          IF ls_tlane-loctype_to = 'P' AND  ls_tlane-loctype_from = 'P'.
+*            ls_tlane-proc_prio  = '2'.
+*            ls_tlane-esokz      = '7'.
+*          ENDIF.
+*          APPEND ls_tlane TO gt_tlane_ext_final.
+*          CLEAR : ls_marc_temp.
+*        ENDLOOP.
+*        IF sy-subrc NE 0.
+*          LOOP AT  lt_marc_temp_r  INTO ls_marc_temp WHERE  matnr = ls_marc_temp1-matnr  AND  beskz = 'X'.
+*            ls_tlane-locno_from = ls_marc_temp-locno.
+*            ls_tlane-loctype_from   = 'P'.
+*            ls_tlane-ekorg          = ' '.
+*            ls_tlane-mot_id         = 'DEF'.
+*            ls_tlane-counter        = '00001'.
+*            ls_tlane-lifab          = '19700101'.
+*            ls_tlane-lifbi          = '99991231'.
+*            ls_tlane-creation_mode  = 'M'.
+*            IF ls_tlane-loctype_to = 'P' AND  ls_tlane-loctype_from = 'P'.
+*              ls_tlane-proc_prio  = '2'.
+*              ls_tlane-esokz      = '7'.
+*            ENDIF.
+*            APPEND ls_tlane TO gt_tlane_ext_final.
+*            CLEAR : ls_marc_temp.
+*            CLEAR : ls_marc_temp.
+*          ENDLOOP.
+*        ENDIF.
+*      ENDIF.
+*      CLEAR ls_marc_temp1.
+*    ENDLOOP.
+*    CLEAR ls_tlane.
+*    LOOP AT lt_marc_temp2  INTO ls_marc_temp1.
+*      ls_tlane-logsys     = ls_marc_temp1-logsys.
+*      ls_tlane-matnr      = ls_marc_temp1-matnr.
+*      ls_tlane-locno_to   = ls_marc_temp1-locno.
+*      ls_tlane-loctype_to = ls_marc_temp1-loctype.
+*      ls_tlane-esokz      = '7'.
+*      CLEAR : ls_marc_temp , lt_marc_temp_r.
+*      lt_marc_temp_r[] = lt_marc_temp[].
+*      SORT lt_marc_temp_r BY locno.
+*      DELETE lt_marc_temp_r WHERE locno EQ ls_marc_temp1-locno.
+*      READ TABLE lt_marc_temp_r INTO ls_marc_temp WITH KEY matnr = ls_marc_temp1-matnr   beskz = 'E'.
+*      IF sy-subrc EQ 0.
+*        ls_tlane-locno_from = ls_marc_temp-locno.
+*      ELSE.
+*        CLEAR : ls_marc_temp.
+*        READ TABLE lt_marc_temp_r INTO ls_marc_temp WITH KEY matnr = ls_marc_temp1-matnr   beskz = 'X'.
+*        IF sy-subrc EQ 0.
+*          ls_tlane-locno_from = ls_marc_temp-locno.
+*        ENDIF.
+*      ENDIF.
+*      ls_tlane-loctype_from   = ls_marc_temp1-loctype.
+*      ls_tlane-ekorg          = ' '.
+*      ls_tlane-mot_id         = 'DEF'.
+*      ls_tlane-counter        = '00001'.
+*      ls_tlane-lifab          = '19700101'.
+*      ls_tlane-lifbi          = '99991231'.
+*      ls_tlane-creation_mode  = 'M'.
+*      IF ls_tlane-loctype_to = 'P' AND  ls_tlane-loctype_from = 'P'.
+*        ls_tlane-proc_prio  = '2'.
+*        ls_tlane-esokz      = '7'.
+*      ENDIF.
+*      APPEND ls_tlane TO gt_tlane_ext_final.
+*      CLEAR ls_marc_temp1.
+*    ENDLOOP.
+*    go_function->modify_records( ).
+*  ENDIF.
+*&---------------------------------------------------------------------*
+*& Form get_data
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM get_data .
+
+ENDFORM.
