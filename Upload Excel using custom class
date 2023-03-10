@@ -1,0 +1,740 @@
+CLASS zcl_bc_excel_upload DEFINITION
+  PUBLIC
+  FINAL
+  CREATE PRIVATE .
+
+  PUBLIC SECTION.
+
+    TYPES t_file_type TYPE char1.
+
+    CONSTANTS: BEGIN OF c_file_type,
+                 csv_text   TYPE t_file_type VALUE 'C',
+                 tab_text   TYPE t_file_type VALUE 'T',
+                 xls_binary TYPE t_file_type VALUE 'E',
+               END OF c_file_type.
+
+    CLASS-METHODS:
+      get_instance RETURNING VALUE(ro_obj) TYPE REF TO zcl_bc_excel_upload.
+
+    METHODS:
+      convert_excel_date_to_ddmmyyyy CHANGING !cv_date TYPE any,
+
+      get_file_type
+        IMPORTING !iv_filename        TYPE clike
+        RETURNING VALUE(rv_file_type) TYPE t_file_type
+        RAISING   zcx_bc_method_parameter,
+
+      upload_into_dynamic_itab
+        IMPORTING
+          !iv_filename   TYPE rlgrap-filename
+          !iv_begin_col  TYPE i
+          !iv_begin_row  TYPE i
+          !iv_end_col    TYPE i
+          !iv_end_row    TYPE i
+        RETURNING
+          VALUE(rt_data) TYPE issr_alsmex_tabline
+        RAISING
+          zcx_bc_file_upload,
+
+      upload_into_report_itab
+        IMPORTING
+          !iv_repid       TYPE sy-repid
+          !iv_tname       TYPE text100
+          !iv_filename    TYPE string
+          !iv_line        TYPE int4
+        CHANGING
+          VALUE(rt_table) TYPE REF TO data
+        RAISING
+          zcx_bc_file_upload,
+
+      upload_into_ddic_itab
+        IMPORTING
+          !iv_repid          TYPE sy-repid OPTIONAL
+          !iv_structure_name TYPE dd02l-tabname OPTIONAL
+          !iv_filename       TYPE string OPTIONAL
+          !iv_line           TYPE int4 OPTIONAL
+        CHANGING
+          !ct_table          TYPE ANY TABLE OPTIONAL
+        RETURNING
+          VALUE(rt_return)   TYPE bapiret2_t
+        EXCEPTIONS
+          error_structure_read
+          conversion_error .
+
+  PROTECTED SECTION.
+  PRIVATE SECTION.
+
+    TYPES: tt_text4096 TYPE STANDARD TABLE OF text4096 WITH DEFAULT KEY,
+           tt_dd03p    TYPE STANDARD TABLE OF dd03p WITH DEFAULT KEY,
+           tt_string   TYPE STANDARD TABLE OF string WITH DEFAULT KEY.
+
+    CONSTANTS: BEGIN OF c_extension,
+                 csv  TYPE char3 VALUE 'CSV',
+                 txt  TYPE char3 VALUE 'TXT',
+                 xls  TYPE char3 VALUE 'XLS',
+                 xlsx TYPE char4 VALUE 'XLSX',
+               END OF c_extension,
+
+               BEGIN OF c_char,
+                 semicolon TYPE char1 VALUE ';',
+               END OF c_char,
+
+               BEGIN OF c_method,
+                 get_file_type TYPE seocpdname VALUE 'GET_FILE_TYPE',
+               END OF c_method,
+
+               BEGIN OF c_field,
+                 file_type TYPE fieldname VALUE 'FILE_TYPE',
+               END OF c_field.
+
+    CLASS-DATA go_singleton TYPE REF TO zcl_bc_excel_upload.
+
+    METHODS:
+      get_structure_definition
+        IMPORTING  !iv_structure_name   TYPE dd02l-tabname
+        RETURNING  VALUE(rt_definition) TYPE tt_dd03p
+        EXCEPTIONS error_structure_read,
+
+      move_upload_cell_to_output
+        IMPORTING
+          !is_definition TYPE dd03p
+          !iv_input      TYPE any
+        EXPORTING
+          !ev_output     TYPE any
+        EXCEPTIONS
+          conversion_error,
+
+      upload_text_into_ddic_itab
+        IMPORTING
+          !iv_structure_name TYPE dd02l-tabname
+          !iv_filename       TYPE rlgrap-filename
+          !iv_line           TYPE int4
+          !iv_deliminator    TYPE char1
+        CHANGING
+          !ct_table          TYPE STANDARD TABLE
+        RAISING
+          zcx_bc_file_upload,
+
+      upload_text_into_dynamic_itab
+        IMPORTING
+          !iv_filename    TYPE rlgrap-filename
+          !iv_begin_col   TYPE i
+          !iv_begin_row   TYPE i
+          !iv_end_col     TYPE i
+          !iv_end_row     TYPE i
+          !iv_deliminator TYPE char1
+        RETURNING
+          VALUE(rt_data)  TYPE issr_alsmex_tabline
+        RAISING
+          zcx_bc_file_upload,
+
+      upload_text_into_flat_itab
+        IMPORTING
+                  !iv_filename    TYPE rlgrap-filename
+                  !iv_deliminator TYPE char1
+        RETURNING
+                  VALUE(rt_itab)  TYPE tt_text4096
+        RAISING   zcx_bc_file_upload,
+
+      upload_xls_into_ddic_itab
+        IMPORTING
+          !iv_structure_name TYPE dd02l-tabname
+          !iv_file_name      TYPE rlgrap-filename
+          !iv_line           TYPE int4
+        CHANGING
+          !ct_table          TYPE ANY TABLE
+        EXCEPTIONS
+          error_structure_read
+          conversion_error.
+
+ENDCLASS.
+
+
+
+CLASS zcl_bc_excel_upload IMPLEMENTATION.
+
+  METHOD convert_excel_date_to_ddmmyyyy.
+
+    DATA lt_split TYPE tt_string.
+
+    DATA(lv_date_text) = |{ cv_date }|.
+
+    SPLIT lv_date_text AT '.' INTO TABLE lt_split.
+
+    IF NOT ( lines( lt_split ) EQ 3 AND
+             ( strlen( lt_split[ 1 ] ) EQ 1 OR
+               strlen( lt_split[ 1 ] ) EQ 2 ) AND
+             ( strlen( lt_split[ 2 ] ) EQ 1 OR
+               strlen( lt_split[ 2 ] ) EQ 2 ) AND
+             strlen( lt_split[ 3 ] ) EQ 4 ).
+      RETURN.
+    ENDIF.
+
+    DATA(lv_day) = lt_split[ 1 ].
+    IF strlen( lv_day ) LT 2.
+      lv_day = |0{ lv_day }|.
+    ENDIF.
+
+    DATA(lv_month) = lt_split[ 2 ].
+    IF strlen( lv_month ) LT 2.
+      lv_day = |0{ lv_month }|.
+    ENDIF.
+
+    cv_date = |{ lv_day }.{ lv_month }.{ lt_split[ 3 ] }|.
+
+  ENDMETHOD.
+
+  METHOD get_file_type.
+
+    DATA(lv_upper_case_filename) = |{ iv_filename }|.
+    TRANSLATE lv_upper_case_filename TO UPPER CASE.
+
+    rv_file_type = COND #( WHEN lv_upper_case_filename CS |.{ c_extension-xls }|
+                           THEN c_file_type-xls_binary
+
+                           WHEN lv_upper_case_filename CS |.{ c_extension-xlsx }|
+                           THEN c_file_type-xls_binary
+
+                           WHEN lv_upper_case_filename CS |.{ c_extension-csv }|
+                           THEN c_file_type-csv_text
+
+                           WHEN lv_upper_case_filename CS |.{ c_extension-txt }|
+                           THEN c_file_type-tab_text ).
+
+    IF rv_file_type IS INITIAL.
+      RAISE EXCEPTION TYPE zcx_bc_method_parameter
+        EXPORTING
+          textid      = zcx_bc_method_parameter=>param_value_invalid
+          class_name  = CONV #( cl_abap_classdescr=>get_class_name( me ) )
+          method_name = c_method-get_file_type
+          param_name  = CONV #( c_field-file_type ).
+    ENDIF.
+
+  ENDMETHOD.
+
+  METHOD get_instance.
+    IF go_singleton IS INITIAL.
+      go_singleton = NEW #( ).
+    ENDIF.
+    ro_obj = go_singleton.
+  ENDMETHOD.
+
+  METHOD get_structure_definition.
+
+    DATA ls_dd02v_n    TYPE dd02v.
+
+    CALL FUNCTION 'DD_INT_TABL_GET'
+      EXPORTING
+        tabname        = iv_structure_name
+      IMPORTING
+        dd02v_n        = ls_dd02v_n
+      TABLES
+        dd03p_n        = rt_definition
+      EXCEPTIONS
+        internal_error = 1.
+
+    IF sy-subrc EQ 0 AND lines( rt_definition ) GT 0.
+
+      CALL FUNCTION 'DD_TABL_EXPAND' ##FM_SUBRC_OK
+        EXPORTING
+          dd02v_wa          = ls_dd02v_n
+          mode              = 46
+          prid              = 0
+        TABLES
+          dd03p_tab         = rt_definition
+        EXCEPTIONS
+          illegal_parameter = 1.
+
+    ENDIF.
+
+    IF lines( rt_definition ) EQ 0.
+      RAISE error_structure_read.
+    ENDIF.
+
+    DELETE rt_definition WHERE fieldname EQ '.INCLUDE'.
+
+  ENDMETHOD.
+
+  METHOD move_upload_cell_to_output.
+
+    DATA lv_fname TYPE rs38l_fnam.
+
+    TRY.
+        zcl_bc_gui_toolkit=>convert_any_input_to_data( EXPORTING iv_source = iv_input
+                                                       CHANGING  cv_target = ev_output ).
+      CATCH cx_root INTO DATA(lo_cx).
+        MESSAGE lo_cx->previous TYPE 'S' DISPLAY LIKE 'E'.
+        RAISE conversion_error.
+    ENDTRY.
+
+    IF is_definition-convexit IS NOT INITIAL AND
+       is_definition-inttype NE 'P'.
+      lv_fname = 'CONVERSION_EXIT_' &&
+                 is_definition-convexit &&
+                 '_INPUT'.
+
+      CALL FUNCTION lv_fname ##FM_SUBRC_OK
+        EXPORTING
+          input  = ev_output
+        IMPORTING
+          output = ev_output
+        EXCEPTIONS
+          OTHERS = 1.
+
+    ENDIF.
+
+  ENDMETHOD.
+
+  METHOD upload_into_dynamic_itab.
+
+    TRY.
+
+        DATA(lv_file_type) = get_file_type( iv_filename ).
+
+        CASE lv_file_type.
+          WHEN c_file_type-csv_text.
+
+            rt_data = upload_text_into_dynamic_itab( iv_filename    = iv_filename
+                                                     iv_begin_col   = iv_begin_col
+                                                     iv_begin_row   = iv_begin_row
+                                                     iv_end_col     = iv_end_col
+                                                     iv_end_row     = iv_end_row
+                                                     iv_deliminator = c_char-semicolon ).
+
+          WHEN c_file_type-tab_text.
+
+            rt_data = upload_text_into_dynamic_itab( iv_filename    = iv_filename
+                                                     iv_begin_col   = iv_begin_col
+                                                     iv_begin_row   = iv_begin_row
+                                                     iv_end_col     = iv_end_col
+                                                     iv_end_row     = iv_end_row
+                                                     iv_deliminator = cl_abap_char_utilities=>horizontal_tab ).
+
+          WHEN c_file_type-xls_binary.
+
+            CALL FUNCTION 'ALSM_EXCEL_TO_INTERNAL_TABLE' ##FM_SUBRC_OK
+              EXPORTING
+                filename                = iv_filename
+                i_begin_col             = iv_begin_col
+                i_begin_row             = iv_begin_row
+                i_end_col               = iv_end_col
+                i_end_row               = iv_end_row
+              TABLES
+                intern                  = rt_data
+              EXCEPTIONS
+                inconsistent_parameters = 1
+                upload_ole              = 2
+                OTHERS                  = 3.
+
+            zcx_bc_function_subrc=>raise_if_sysubrc_not_initial( 'ALSM_EXCEL_TO_INTERNAL_TABLE' ).
+
+          WHEN OTHERS.
+            RAISE EXCEPTION TYPE zcx_bc_unsupported_operation
+              EXPORTING
+                textid    = zcx_bc_unsupported_operation=>uo_in_context
+                context   = CONV #( cl_abap_classdescr=>get_class_name( me ) )
+                operation = CONV #( lv_file_type ).
+        ENDCASE.
+
+      CATCH cx_root INTO DATA(lo_diaper).
+        RAISE EXCEPTION TYPE zcx_bc_file_upload
+          EXPORTING
+            filename = CONV #( iv_filename ).
+    ENDTRY.
+
+  ENDMETHOD.
+
+  METHOD upload_into_report_itab.
+
+    DATA: lt_tabcde  TYPE TABLE OF alsmex_tabline,
+          ls_tabcde  TYPE alsmex_tabline,
+          lv_file    TYPE rlgrap-filename,
+          lt_comp    TYPE TABLE OF rstrucinfo,
+          ls_comp    TYPE rstrucinfo,
+          lv_tind(4) TYPE n,
+          lo_line    TYPE REF TO data.
+
+    lv_file = iv_filename.
+
+    lt_tabcde = upload_into_dynamic_itab( iv_filename        = CONV #( iv_filename )
+                                          iv_begin_col       = 1
+                                          iv_begin_row       = iv_line
+                                          iv_end_col         = 999
+                                          iv_end_row         = 00000 ).
+
+    CALL FUNCTION 'GET_COMPONENT_LIST'
+      EXPORTING
+        program    = iv_repid
+        fieldname  = iv_tname
+      TABLES
+        components = lt_comp[].
+
+
+    FIELD-SYMBOLS : <fs_value> TYPE any,
+                    <fs_table> TYPE STANDARD TABLE,
+                    <fs_lines> TYPE any.
+
+    ASSIGN rt_table->* TO <fs_table>.
+    IF sy-subrc NE 0.
+      RETURN.
+    ENDIF.
+
+    CREATE DATA lo_line LIKE LINE OF <fs_table>.
+    ASSIGN lo_line->* TO <fs_lines>.
+    IF sy-subrc NE 0.
+      RETURN.
+    ENDIF.
+
+    LOOP AT lt_tabcde INTO ls_tabcde.
+      lv_tind = ls_tabcde-col.
+      READ TABLE lt_comp INTO ls_comp INDEX lv_tind.
+      IF sy-subrc EQ 0.
+        ASSIGN COMPONENT ls_comp-compname
+               OF STRUCTURE <fs_lines> TO <fs_value>.
+        IF sy-subrc EQ 0.
+          <fs_value> = ls_tabcde-value.
+        ENDIF.
+      ENDIF.
+
+      AT END OF row.
+        APPEND <fs_lines> TO <fs_table>.
+      ENDAT.
+    ENDLOOP.
+    rt_table = REF #( <fs_table> ).
+
+  ENDMETHOD.
+
+  METHOD upload_into_ddic_itab.
+
+    DATA: lv_file TYPE rlgrap-filename,
+          lv_line TYPE i.
+
+
+    " Parametre hazırlığı """""""""""""""""""""""""""""""""""""""""""
+
+    IF iv_filename IS NOT  INITIAL.
+      lv_file = iv_filename.
+    ELSE.
+      lv_file = CONV rlgrap-filename( zcl_bc_gui_toolkit=>get_file( ) ) ##OPERATOR.
+    ENDIF.
+
+    IF iv_line IS INITIAL.
+      lv_line = 1.
+    ELSE.
+      lv_line = iv_line.
+    ENDIF.
+
+    " Dosya türüne göre işlem yap """""""""""""""""""""""""""""""""""
+
+    TRY.
+        DATA(lv_file_type) = get_file_type( lv_file ).
+      CATCH cx_root.
+        RAISE error_structure_read.
+    ENDTRY.
+
+    CASE lv_file_type.
+      WHEN c_file_type-csv_text.
+
+        TRY.
+            upload_text_into_ddic_itab( EXPORTING iv_structure_name = iv_structure_name
+                                                  iv_filename       = lv_file
+                                                  iv_line           = lv_line
+                                                  iv_deliminator    = c_char-semicolon
+                                        CHANGING  ct_table          = ct_table ).
+          CATCH cx_root.
+            RAISE error_structure_read.
+        ENDTRY.
+
+      WHEN c_file_type-tab_text.
+
+        TRY.
+            upload_text_into_ddic_itab( EXPORTING iv_structure_name = iv_structure_name
+                                                  iv_filename       = lv_file
+                                                  iv_line           = lv_line
+                                                  iv_deliminator    = cl_abap_char_utilities=>horizontal_tab
+                                        CHANGING  ct_table          = ct_table ).
+          CATCH cx_root.
+            RAISE error_structure_read.
+        ENDTRY.
+
+      WHEN c_file_type-xls_binary.
+
+        CALL METHOD upload_xls_into_ddic_itab
+          EXPORTING
+            iv_structure_name    = iv_structure_name
+            iv_file_name         = lv_file
+            iv_line              = lv_line
+          CHANGING
+            ct_table             = ct_table
+          EXCEPTIONS
+            error_structure_read = 1
+            conversion_error     = 2
+            OTHERS               = 3.
+
+        CASE sy-subrc.
+          WHEN 0.
+            RETURN.
+          WHEN 1.
+            RAISE error_structure_read.
+          WHEN 2.
+            RAISE conversion_error.
+        ENDCASE.
+
+      WHEN OTHERS.
+        RAISE error_structure_read.
+    ENDCASE.
+
+  ENDMETHOD.
+
+  METHOD upload_text_into_ddic_itab.
+
+    DATA: lt_upload_line_split TYPE tt_text4096.
+
+    CALL METHOD get_structure_definition
+      EXPORTING
+        iv_structure_name    = iv_structure_name
+      RECEIVING
+        rt_definition        = DATA(lt_definition)
+      EXCEPTIONS
+        error_structure_read = 1
+        OTHERS               = 2.
+
+    IF sy-subrc NE 0.
+      RAISE EXCEPTION TYPE zcx_bc_file_upload
+        EXPORTING
+          filename = CONV #( iv_filename ).
+    ENDIF.
+
+    DATA(lt_upload) = upload_text_into_flat_itab( iv_filename    = iv_filename
+                                                  iv_deliminator = iv_deliminator ).
+
+    IF lt_upload IS INITIAL.
+      RETURN.
+    ENDIF.
+
+    IF iv_line IS NOT INITIAL.
+      DATA(lv_desired_line_count) = lines( lt_upload ) - iv_line + 1.
+      WHILE lines( lt_upload ) GT lv_desired_line_count.
+        DELETE lt_upload INDEX 1.
+      ENDWHILE.
+      IF lt_upload IS INITIAL.
+        RETURN.
+      ENDIF.
+    ENDIF.
+
+    LOOP AT lt_upload ASSIGNING FIELD-SYMBOL(<lv_upload_line>).
+      CLEAR lt_upload_line_split.
+      SPLIT <lv_upload_line> AT iv_deliminator INTO TABLE lt_upload_line_split.
+
+      APPEND INITIAL LINE TO ct_table ASSIGNING FIELD-SYMBOL(<ls_output>).
+
+      LOOP AT lt_upload_line_split ASSIGNING FIELD-SYMBOL(<lv_upload_cell>).
+        DATA(lv_column_position) = sy-tabix.
+
+        ASSIGN lt_definition[ lv_column_position ] TO FIELD-SYMBOL(<ls_definition>).
+        CHECK sy-subrc EQ 0.
+
+        ASSIGN COMPONENT <ls_definition>-fieldname OF STRUCTURE <ls_output> TO FIELD-SYMBOL(<lv_output_cell>).
+        CHECK sy-subrc EQ 0.
+
+        CALL METHOD move_upload_cell_to_output
+          EXPORTING
+            is_definition    = <ls_definition>
+            iv_input         = <lv_upload_cell>
+          IMPORTING
+            ev_output        = <lv_output_cell>
+          EXCEPTIONS
+            conversion_error = 1
+            OTHERS           = 2.
+
+        IF sy-subrc <> 0.
+          RAISE EXCEPTION TYPE zcx_bc_file_upload
+            EXPORTING
+              filename = CONV #( iv_filename ).
+        ENDIF.
+
+      ENDLOOP.
+
+    ENDLOOP.
+
+  ENDMETHOD.
+
+  METHOD upload_text_into_dynamic_itab.
+
+    DATA lt_split_line TYPE tt_text4096.
+
+    TRY.
+
+        DATA(lt_file_content) = upload_text_into_flat_itab( iv_filename    = iv_filename
+                                                            iv_deliminator = iv_deliminator ).
+
+        DATA(lv_current_row) = 0.
+
+        LOOP AT lt_file_content ASSIGNING FIELD-SYMBOL(<ls_file_line>).
+          ADD 1 TO lv_current_row.
+          CHECK lv_current_row GE iv_begin_row.
+          IF lv_current_row GT iv_end_row.
+            RETURN.
+          ENDIF.
+
+          CLEAR lt_split_line.
+          SPLIT <ls_file_line> AT iv_deliminator INTO TABLE lt_split_line.
+
+          DATA(lv_current_col) = 0.
+
+          LOOP AT lt_split_line ASSIGNING FIELD-SYMBOL(<lv_cell>).
+            ADD 1 TO lv_current_col.
+            CHECK lv_current_col GE iv_begin_col.
+            IF lv_current_col GT iv_end_col.
+              EXIT.
+            ENDIF.
+
+            APPEND VALUE #( row   = lv_current_row
+                            col   = lv_current_col
+                            value = <lv_cell> ) TO rt_data.
+          ENDLOOP.
+
+        ENDLOOP.
+
+      CATCH cx_root INTO DATA(lo_diaper).
+        RAISE EXCEPTION TYPE zcx_bc_file_upload
+          EXPORTING
+            filename = CONV #( iv_filename )
+            previous = lo_diaper.
+    ENDTRY.
+
+  ENDMETHOD.
+
+  METHOD upload_text_into_flat_itab.
+
+    cl_gui_frontend_services=>gui_upload(
+      EXPORTING
+        filename                = CONV #( iv_filename )
+        has_field_separator     = abap_true
+      CHANGING
+        data_tab                = rt_itab
+      EXCEPTIONS
+        file_open_error         = 1
+        file_read_error         = 2
+        no_batch                = 3
+        gui_refuse_filetransfer = 4
+        invalid_type            = 5
+        no_authority            = 6
+        unknown_error           = 7
+        bad_data_format         = 8
+        header_not_allowed      = 9
+        separator_not_allowed   = 10
+        header_too_long         = 11
+        unknown_dp_error        = 12
+        access_denied           = 13
+        dp_out_of_memory        = 14
+        disk_full               = 15
+        dp_timeout              = 16
+        not_supported_by_gui    = 17
+        error_no_gui            = 18
+        OTHERS                  = 19
+    ).
+
+    IF sy-subrc <> 0.
+      RAISE EXCEPTION TYPE zcx_bc_file_upload
+        EXPORTING
+          filename = CONV #( iv_filename ).
+    ENDIF.
+
+  ENDMETHOD.
+
+  METHOD upload_xls_into_ddic_itab.
+
+    DATA: lt_tabcde  TYPE TABLE OF alsmex_tabline,
+          ls_tabcde  TYPE alsmex_tabline,
+
+          lv_tind(4) TYPE n,
+          lo_line    TYPE REF TO data.
+
+    FIELD-SYMBOLS: <fs_value> TYPE any,
+                   <fs_table> TYPE STANDARD TABLE,
+                   <fs_lines> TYPE any.
+
+    " Tablo detayını al """""""""""""""""""""""""""""""""""""""""""""""
+
+    CALL METHOD get_structure_definition
+      EXPORTING
+        iv_structure_name    = iv_structure_name
+      RECEIVING
+        rt_definition        = DATA(lt_definition)
+      EXCEPTIONS
+        error_structure_read = 1
+        OTHERS               = 2.
+
+    IF sy-subrc NE 0.
+      RAISE error_structure_read.
+    ENDIF.
+
+    TRY.
+        lt_tabcde = upload_into_dynamic_itab( iv_filename        = iv_file_name
+                                              iv_begin_col       = 1
+                                              iv_begin_row       = iv_line
+                                              iv_end_col         = lines( lt_definition )
+                                              iv_end_row         = 999999 ).
+      CATCH cx_root.
+        CALL FUNCTION 'ZALSM_EXCEL_TO_INTERNAL_TABLE' ##FM_SUBRC_OK
+          EXPORTING
+            filename                = iv_file_name
+            i_begin_col             = 1
+            i_begin_row             = iv_line
+            i_end_col               = lines( lt_definition )
+            i_end_row               = 65000
+          TABLES
+            intern                  = lt_tabcde
+          EXCEPTIONS
+            inconsistent_parameters = 1
+            upload_ole              = 2
+            OTHERS                  = 3.
+        IF sy-subrc NE 0.
+          MESSAGE i001(ls) WITH iv_file_name TEXT-e01.
+        ENDIF.
+    ENDTRY.
+
+    " Mapping """""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+    ASSIGN ct_table TO <fs_table>.
+
+    CREATE DATA lo_line LIKE LINE OF <fs_table>.
+    ASSIGN lo_line->* TO <fs_lines>.
+    IF sy-subrc NE 0.
+      RETURN.
+    ENDIF.
+
+    LOOP AT lt_tabcde INTO ls_tabcde.
+      lv_tind = ls_tabcde-col.
+      READ TABLE lt_definition ASSIGNING FIELD-SYMBOL(<fs_definition>) INDEX lv_tind.
+      IF sy-subrc EQ 0.
+        ASSIGN COMPONENT <fs_definition>-fieldname OF STRUCTURE <fs_lines> TO <fs_value>.
+        IF sy-subrc EQ 0.
+
+          CALL METHOD move_upload_cell_to_output
+            EXPORTING
+              is_definition    = <fs_definition>
+              iv_input         = ls_tabcde-value
+            IMPORTING
+              ev_output        = <fs_value>
+            EXCEPTIONS
+              conversion_error = 1
+              OTHERS           = 2.
+
+          IF sy-subrc <> 0.
+            RAISE conversion_error.
+          ENDIF.
+
+        ENDIF.
+      ENDIF.
+
+      AT END OF row.
+        APPEND <fs_lines> TO <fs_table>.
+        CLEAR <fs_lines>.
+      ENDAT.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+ENDCLASS.
