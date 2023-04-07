@@ -1,0 +1,876 @@
+*&---------------------------------------------------------------------*
+*& Report ZSF_AIRWATER
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT zsf_royalty.
+
+TABLES : bseg , zroyalty.""""added zroyalty table name  rajani on 06.03.2023.
+
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME.
+  PARAMETERS p_bukrs TYPE bseg-bukrs.
+  SELECT-OPTIONS s_belnr FOR bseg-belnr.
+  PARAMETERS p_gjahr TYPE bseg-gjahr.
+  PARAMETERS : p_dis  RADIOBUTTON GROUP r1,
+               p_mail RADIOBUTTON GROUP r1.
+SELECTION-SCREEN END OF BLOCK b1.
+
+TYPES : BEGIN OF ty_final,
+          belnr         TYPE bseg-belnr,
+          secco         TYPE bseg-secco,
+          plc_sup       TYPE bseg-plc_sup,
+          budat         TYPE bkpf-budat,
+          stcd3         TYPE stcd3,
+          j_1ipanno     TYPE j_1imocust-j_1ipanno,
+          regio         TYPE regio,
+          ort01         TYPE ort01_gp,
+          txt20         TYPE skat-txt20,
+          dmbtr         TYPE bseg-dmbtr,
+          cgst          TYPE bseg-dmbtr,
+          sgst          TYPE bseg-dmbtr,
+          gst_total     TYPE  bseg-dmbtr,
+          invoice_total TYPE  bseg-dmbtr,
+*          sdate         TYPE sy-datum,""" commentes by rajani 06.03.2023
+*          ldate         TYPE sy-datum,"""commented by rajani
+          sdate         TYPE zroyalty-zperiod_from, "" added by rajani 06.03.2023
+          ldate         TYPE zroyalty-zperiod_to, "" added by rajani
+          text          TYPE zroyalty-text,       """added by rajani
+          zmonth(15)    TYPE c,
+          zyear(4)      TYPE c,
+          kunnr         TYPE kunnr,
+          name1         TYPE name1_gp,
+          name2         TYPE name1_gp,
+          street        TYPE ad_street,
+          city1         TYPE ad_city1,
+          post_code1    TYPE ad_pstcd1,
+          sac_code      TYPE j_1ig_hsn_sac,
+        END OF ty_final.
+
+DATA : it_final TYPE TABLE OF ty_final,
+       wa_final TYPE ty_final.
+DATA:wa TYPE zstr_airwater.
+
+TYPES : BEGIN OF ty_zroyalty,            """"start of code by rajani
+          belnr      TYPE zroyalty-belnr,
+          gl_account TYPE	hkont,
+          customer   TYPE	kunnr,
+          text       TYPE zroyalty-text,
+          sdate      TYPE zroyalty-zperiod_from,
+          ldate      TYPE zroyalty-zperiod_to,
+        END OF  ty_zroyalty.
+
+DATA : it_zroyalty TYPE TABLE OF ty_zroyalty,
+       wa_zroyalty TYPE ty_zroyalty.        """'end of code by rajani.
+
+TYPES : BEGIN OF ty_bseg,
+          bukrs   TYPE bseg-bukrs,
+          belnr   TYPE bseg-belnr,
+          gjahr   TYPE bseg-gjahr,
+          buzei   TYPE bseg-buzei,
+          plc_sup TYPE bseg-plc_sup,
+          dmbtr   TYPE bseg-dmbtr,
+          ktosl   TYPE bseg-ktosl,
+          kunnr   TYPE kunnr,
+          hkont   TYPE bseg-hkont,
+          secco   TYPE bseg-secco,
+        END OF ty_bseg.
+
+
+TYPES: BEGIN OF ty_bkpf,
+         bukrs TYPE bkpf-bukrs,
+         belnr TYPE bkpf-belnr,
+         gjahr TYPE bkpf-belnr,
+         budat TYPE bkpf-budat,
+       END OF ty_bkpf.
+
+
+
+DATA : wa_bseg TYPE ty_bseg,
+       it_bseg TYPE TABLE OF ty_bseg,
+       it_bkpf TYPE TABLE OF ty_bkpf,
+       wa_bkpf TYPE ty_bkpf.
+
+TYPES : BEGIN OF ty_gst,
+          partner TYPE dfkkbptaxnum-partner,
+          taxtype TYPE dfkkbptaxnum-taxtype,
+          taxnum  TYPE dfkkbptaxnum-taxnum,
+        END OF ty_gst.
+
+DATA : it_gst TYPE TABLE OF ty_gst,
+       wa_gst TYPE ty_gst.
+
+TYPES : BEGIN OF ty_pan,
+          kunnr     TYPE kunnr,
+          j_1ipanno TYPE j_1imocust-j_1ipanno,
+        END OF ty_pan.
+
+DATA : it_pan TYPE TABLE OF ty_pan,
+       wa_pan TYPE ty_pan.
+
+TYPES : BEGIN OF ty_kna1,
+          kunnr     TYPE kunnr,
+          name1     TYPE name1_gp,
+          name2     TYPE name1_gp,
+          regio     TYPE regio,
+
+          ort01     TYPE ort01_gp,
+          adrnr     TYPE adrnr,
+          j_1ipanno TYPE j_1ipanno,
+          stcd3     TYPE stcd3,
+        END OF ty_kna1.
+
+TYPES : BEGIN OF ty_adrc,
+          addrnumber TYPE ad_addrnum,
+          name1      TYPE ad_name1,
+          house_num1 TYPE ad_hsnm1,
+          street     TYPE ad_street,
+          city1      TYPE ad_city1,
+          city2      TYPE ad_city2,
+          post_code1 TYPE ad_pstcd1,
+          tel_number TYPE ad_tlnmbr1,
+        END OF ty_adrc.
+
+DATA : it_kna1 TYPE TABLE OF ty_kna1,
+       wa_kna1 TYPE ty_kna1,
+       it_adrc TYPE TABLE OF ty_adrc,
+       wa_adrc TYPE ty_adrc.
+
+TYPES : BEGIN OF ty_skat,
+          spras TYPE skat-spras,
+          ktopl TYPE skat-ktopl,
+          saknr TYPE skat-saknr,
+          txt20 TYPE skat-txt20,
+        END OF ty_skat.
+
+
+DATA : it_text TYPE TABLE OF ty_skat,
+       wa_text TYPE ty_skat.
+
+DATA : v_sdate TYPE sy-datum,
+       v_ldate TYPE sy-datum,
+       v_temp  TYPE dats.
+
+TYPES: BEGIN OF ty_j_1ig_invrefnum,
+         bukrs    TYPE j_1ig_invrefnum-bukrs,
+         docno    TYPE j_1ig_invrefnum-docno,
+         doc_year TYPE j_1ig_invrefnum-doc_year,
+         doc_type TYPE j_1ig_invrefnum-doc_type,
+         odn      TYPE j_1ig_invrefnum-odn,
+         irn      TYPE j_1ig_invrefnum-irn,
+         version  TYPE j_1ig_invrefnum-version,
+         ack_no   TYPE j_1ig_invrefnum-ack_no,
+         ack_date TYPE j_1ig_invrefnum-ack_date,
+       END OF ty_j_1ig_invrefnum.
+
+
+DATA : it_irn TYPE TABLE OF ty_j_1ig_invrefnum,
+       wa_irn TYPE ty_j_1ig_invrefnum.
+
+
+
+*----> start of selection
+
+SELECT
+  bukrs
+          belnr
+          gjahr
+          buzei
+          plc_sup
+          dmbtr
+  ktosl
+  kunnr
+  hkont
+  secco
+  FROM bseg INTO TABLE it_bseg
+  WHERE belnr IN s_belnr
+  AND gjahr = p_gjahr
+  AND bukrs = p_bukrs.
+
+IF it_bseg IS NOT INITIAL.
+
+  SELECT
+    bukrs
+    belnr
+    gjahr
+    budat
+    FROM bkpf
+    INTO TABLE it_bkpf
+    FOR ALL ENTRIES IN it_bseg
+    WHERE belnr = it_bseg-belnr
+    AND bukrs = it_bseg-bukrs
+    AND gjahr = it_bseg-gjahr.
+
+  SELECT
+    partner
+    taxtype
+    taxnum
+    FROM dfkkbptaxnum
+    INTO TABLE it_gst
+    FOR ALL ENTRIES IN it_bseg
+    WHERE partner = it_bseg-kunnr.
+
+  SELECT
+    kunnr
+    j_1ipanno
+    FROM j_1imocust
+    INTO TABLE it_pan
+    FOR ALL ENTRIES IN it_bseg
+    WHERE kunnr = it_bseg-kunnr.
+
+  SELECT
+    kunnr
+    name1
+    name2
+    regio
+    ort01
+    adrnr
+    j_1ipanno
+    stcd3
+    FROM kna1
+    INTO TABLE it_kna1
+    FOR ALL ENTRIES IN it_bseg
+    WHERE kunnr = it_bseg-kunnr.
+
+  SELECT
+    addrnumber
+    name1
+    house_num1
+    street
+    city1
+    city2
+    post_code1
+    tel_number
+    FROM adrc
+    INTO TABLE it_adrc
+    FOR ALL ENTRIES IN it_kna1
+    WHERE addrnumber = it_kna1-adrnr.
+
+
+  SELECT
+    spras
+    ktopl
+    saknr
+    txt20
+    FROM skat
+    INTO TABLE it_text
+    FOR ALL ENTRIES IN it_bseg
+    WHERE saknr = it_bseg-hkont.
+
+
+  SELECT
+    belnr                 """"start of code by rajani on 06.03.2023
+    gl_account            """++rajani on 06.03.2023
+    customer              """"++ rajani on 06.03.2023
+    text
+    zperiod_from
+    zperiod_to
+    FROM zroyalty
+    INTO TABLE it_zroyalty
+    FOR ALL ENTRIES IN it_bseg
+    WHERE belnr = it_bseg-belnr AND
+          bukrs = it_bseg-bukrs AND
+          gjahr = it_bseg-gjahr.
+  IF sy-subrc EQ 0.
+    SELECT * FROM  zbot_gl
+           INTO TABLE @DATA(lt_zbot_gl)
+           FOR ALL ENTRIES IN @it_zroyalty
+           WHERE  gl_account = @it_zroyalty-gl_account AND
+                  customer   = @it_zroyalty-customer.
+    IF sy-subrc EQ 0.
+      SORT lt_zbot_gl BY gl_account customer.
+    ENDIF.
+  ENDIF.                                                         """" end of code by rajani on 06.03.2023
+
+ENDIF.
+
+DATA : w_taxno TYPE bptaxnum.
+*v_temp = sy-datum.""" start commenting code rajani on 06-03-2023
+
+*CALL FUNCTION 'RP_LAST_DAY_OF_MONTHS'
+*  EXPORTING
+*    day_in            = v_temp
+*  IMPORTING
+*    last_day_of_month = v_ldate
+*  EXCEPTIONS
+*    day_in_no_date    = 1
+*    OTHERS            = 2.
+*IF sy-subrc <> 0.
+* Implement suitable error handling here
+*ENDIF.
+
+*CONCATENATE v_ldate+0(6)'01' INTO v_sdate."""""""end of comment code rajani on 06-03-2023.
+*BREAK-POINT.
+
+DATA : l_c(2)     TYPE c,
+       l_text(15) TYPE c,
+       l_year(4)  TYPE c.
+
+l_c = sy-datum+4(2).
+l_year = sy-datum+0(4).
+IF l_c = '12'.
+  l_c = '01'.
+  l_year = l_year .
+ELSE.
+  l_c = l_c .
+ENDIF.
+
+IF l_c = '01'.
+  l_text = 'January'.
+ELSEIF l_c  = '02'.
+  l_text = 'February'.
+ELSEIF l_c = '03'.
+  l_text = 'March'.
+ELSEIF l_c = '04'.
+  l_text = 'April'.
+ELSEIF l_c = '05'.
+  l_text = 'May'.
+ELSEIF l_c = '06'.
+  l_text = 'June'.
+ELSEIF l_c = '07'.
+  l_text = 'July'.
+ELSEIF l_c = '08'.
+  l_text = 'August'.
+ELSEIF l_c = '09'.
+  l_text = 'September'.
+ELSEIF l_c = '10'.
+  l_text = 'October'.
+ELSEIF l_c = '11'.
+  l_text = 'Novemeber'.
+ELSEIF l_c = '12'.
+  l_text = 'December'.
+ENDIF.
+
+
+LOOP AT  it_bkpf INTO wa_bkpf.
+
+  wa_final-budat = wa_bkpf-budat.
+
+  LOOP AT it_bseg INTO wa_bseg WHERE belnr = wa_bkpf-belnr.
+    wa_final-belnr = wa_bseg-belnr.
+    IF sy-tabix = 1.
+      wa_final-secco = wa_bseg-secco.
+      wa_final-plc_sup = wa_bseg-plc_sup.
+
+    ENDIF.
+    IF wa_bseg-buzei = '002'.
+      wa_final-dmbtr = wa_bseg-dmbtr.
+    ENDIF.
+    IF wa_bseg-ktosl = 'CGS'.
+      wa_final-cgst = wa_bseg-dmbtr.
+    ELSEIF  wa_bseg-ktosl = 'SGS'.
+
+      wa_final-sgst = wa_bseg-dmbtr.
+
+    ENDIF.
+
+
+  ENDLOOP.
+
+  READ TABLE it_bseg INTO wa_bseg WITH KEY belnr = wa_bkpf-belnr.
+  IF sy-subrc EQ 0.
+*    wa_final-belnr = wa_bseg-belnr.
+*  ENDIF.
+***  READ TABLE it_gst INTO wa_gst WITH KEY partner = wa_bseg-kunnr.
+***  IF sy-subrc EQ 0.
+***    wa_final-taxnum = wa_gst-taxnum.
+***  ENDIF.
+***  READ TABLE it_pan INTO wa_pan WITH KEY kunnr = wa_bseg-kunnr.
+***  IF sy-subrc EQ 0.
+***    wa_final-j_1ipanno = wa_pan-j_1ipanno.
+    wa_final-kunnr = wa_bseg-kunnr.
+  ENDIF.
+
+  READ TABLE it_kna1 INTO wa_kna1 WITH KEY kunnr = wa_bseg-kunnr.
+  IF sy-subrc EQ 0.
+    wa_final-regio = wa_kna1-regio.
+    wa_final-name1 = wa_kna1-name1.
+    wa_final-name2 = wa_kna1-name2.
+
+    IF wa_final-regio IS NOT INITIAL.
+
+      SELECT SINGLE bezei FROM t005u INTO wa_final-ort01 WHERE spras = 'EN'
+                                                         AND land1 = 'IN'
+                                                         AND bland = wa_final-regio.
+    ENDIF.
+*    wa_final-ort01 = wa_kna1-ort01.
+*    wa_final-adrnr = wa_kna1-adrnr.
+    wa_final-stcd3 = wa_kna1-stcd3.
+    wa_final-j_1ipanno = wa_kna1-j_1ipanno.
+
+  ENDIF.
+
+  READ TABLE it_adrc INTO wa_adrc WITH KEY addrnumber = wa_kna1-adrnr.
+  IF sy-subrc EQ 0.
+*           wa_final-NAME1 = wa_adrc-name1.
+*       wa_final-HOUSE_NUM1  = wa_adrc-HOUSE_NUM1.
+    wa_final-street  = wa_adrc-street.
+    wa_final-city1  = wa_adrc-city1.
+*       wa_final-CITY2  = wa_adrc-CITY2.
+    wa_final-post_code1  = wa_adrc-post_code1.
+*       wa_final-TEL_NUMBER  = wa_adrc-TEL_NUMBER.
+  ENDIF.
+
+  READ TABLE it_text INTO wa_text INDEX 2 ."WITH KEY saknr = wa_bseg-hkont .
+  IF sy-subrc EQ 0.
+    wa_final-txt20 = wa_text-txt20.
+  ENDIF.
+  """' start of code rajani 06.03.2023
+  READ TABLE  it_zroyalty INTO wa_zroyalty WITH KEY belnr = wa_bseg-belnr.
+  IF sy-subrc EQ 0.
+    wa_final-text = wa_zroyalty-text.
+    wa_final-sdate = wa_zroyalty-sdate.
+    wa_final-ldate = wa_zroyalty-ldate.
+    READ TABLE lt_zbot_gl INTO DATA(ls_zbot_gl) WITH KEY gl_account = wa_zroyalty-gl_account
+                                                         customer = wa_zroyalty-customer BINARY SEARCH.
+    IF sy-subrc EQ 0.
+      wa_final-sac_code = ls_zbot_gl-sac_code.
+    ENDIF.
+  ENDIF.
+  """end of code rajani 06.03.2023
+  wa_final-gst_total = wa_final-sgst + wa_final-cgst.
+  wa_final-invoice_total = wa_final-gst_total + wa_final-dmbtr.
+*  wa_final-sdate = v_sdate.  """comment by rajani
+*  wa_final-ldate = v_ldate.   """comment by rajani
+  wa_final-zmonth = l_text.
+  wa_final-zyear = l_year.
+  APPEND wa_final TO it_final.
+  CLEAR: wa_final,
+         wa_bseg,
+         wa_bkpf,
+         wa_gst,
+         wa_pan,
+         wa_kna1,
+         wa_text,
+         l_text,
+         l_year.
+ENDLOOP.
+
+
+
+
+DATA : fm_name            TYPE rs38l_fnam,
+       control_parameters TYPE ssfctrlop,
+       w_cnt              TYPE i,
+       w_cnt2             TYPE i.
+
+IF p_dis IS NOT INITIAL.
+
+  CALL FUNCTION 'SSF_FUNCTION_MODULE_NAME'
+    EXPORTING
+      formname           = 'ZFI_ROYALTY'
+*     VARIANT            = ' '
+*     DIRECT_CALL        = ' '
+    IMPORTING
+      fm_name            = fm_name
+    EXCEPTIONS
+      no_form            = 1
+      no_function_module = 2
+      OTHERS             = 3.
+  IF sy-subrc <> 0.
+* Implement suitable error handling here
+  ENDIF.
+
+  DESCRIBE TABLE it_final LINES w_cnt.
+
+  LOOP AT it_final INTO wa_final.
+
+    IF w_cnt = '1'.
+      control_parameters-no_open   = ' ' .
+      control_parameters-no_close  = ' ' .
+    ELSE.
+*  BREAK-POINT.
+      w_cnt2 = sy-tabix .
+      CASE w_cnt2.
+        WHEN 1.
+          control_parameters-no_open   = ' ' .
+          control_parameters-no_close  = 'X' .
+        WHEN w_cnt.
+          control_parameters-no_open   = 'X' .
+          control_parameters-no_close  = ' ' .
+        WHEN OTHERS.
+          control_parameters-no_open   = 'X' .
+          control_parameters-no_close  = 'X' .
+      ENDCASE.
+    ENDIF.
+
+    MOVE-CORRESPONDING wa_final TO wa.
+    CALL FUNCTION fm_name "'/1BCDWB/SF00000363'
+      EXPORTING
+        control_parameters = control_parameters
+        wa_data            = wa
+      EXCEPTIONS
+        formatting_error   = 1
+        internal_error     = 2
+        send_error         = 3
+        user_canceled      = 4
+        OTHERS             = 5.
+    IF sy-subrc <> 0.
+* Implement suitable error handling here
+    ENDIF.
+
+
+  ENDLOOP.
+
+
+ENDIF.
+
+IF p_mail IS NOT INITIAL.
+
+  TYPES : BEGIN OF ty_bseg1,
+            bukrs TYPE bseg-bukrs,
+            belnr TYPE bseg-belnr,
+            gjahr TYPE bseg-gjahr,
+            buzei TYPE bseg-buzei,
+            kunnr TYPE bseg-kunnr,
+          END OF ty_bseg1.
+
+  TYPES : BEGIN OF type_kna1,
+            kunnr TYPE kna1-kunnr,
+            adrnr TYPE kna1-adrnr,
+          END OF type_kna1.
+
+
+  TYPES : BEGIN OF type_s_adr6,
+*      persnumber TYPE adr6-persnumber,
+            addrnumber TYPE adr6-addrnumber,
+            persnumber TYPE adr6-persnumber,
+            date_from  TYPE adr6-date_from,
+            consnumber TYPE adr6-consnumber,
+            smtp_addr  TYPE adr6-smtp_addr,
+          END OF type_s_adr6.
+
+  TYPES : BEGIN OF type_s_lfa1,
+            lifnr TYPE lfa1-lifnr,
+            name1 TYPE lfa1-name1,
+          END OF type_s_lfa1.
+
+*    DATA: it_ekko TYPE TABLE OF type_s_ekko,
+*         it_pnum TYPE TABLE OF type_s_usr21,
+  DATA : it_mail   TYPE TABLE OF type_s_adr6,
+         wa_mail   LIKE LINE OF it_mail,
+         it_vendor TYPE TABLE OF type_s_lfa1,
+         wa_vendor LIKE LINE OF it_vendor,
+         lt_kna1   TYPE TABLE OF type_kna1,
+         ls_kna1   TYPE type_kna1,
+         ls_bseg   TYPE ty_bseg1,
+         lt_bseg   TYPE  STANDARD TABLE OF ty_bseg1.
+
+  DATA: gs_nast TYPE nast.
+
+  DATA: lf_formname    TYPE tdsfname,
+        lf_fm_name     TYPE rs38l_fnam,
+        ls_job_info    TYPE ssfcrescl,
+        wa_control_par TYPE ssfctrlop,
+        gwa_ssfcompop  TYPE ssfcompop.
+
+  DATA: v_language  TYPE sflangu VALUE 'E',
+        v_e_devtype TYPE rspoptype,
+        v_len_in    TYPE  i,
+        i_otf       TYPE TABLE OF itcoo,
+        i_tline     TYPE  bbpt_tline.
+
+  DATA: i_xstring TYPE xstring.
+
+  DATA:is_otf TYPE tsfotf.
+  DATA:ls_otf TYPE itcoo.
+  DATA:i_objbin    TYPE solix_tab.
+
+  DATA : v_email  TYPE string,
+         v_vendor TYPE string.
+
+  SELECT bukrs
+         belnr
+         gjahr
+         buzei
+         kunnr
+    FROM bseg
+    INTO TABLE lt_bseg
+    WHERE bukrs = p_bukrs
+          AND belnr IN s_belnr
+          AND gjahr = p_gjahr.
+
+*    SELECT bname persnumber
+*      FROM usr21
+*      INTO TABLE it_pnum
+*       FOR ALL ENTRIES IN it_ekko
+*      WHERE bname = it_ekko-ernam.
+
+  IF lt_bseg IS NOT INITIAL.
+
+    SELECT kunnr
+           adrnr
+      FROM kna1
+      INTO TABLE lt_kna1
+      FOR ALL ENTRIES IN lt_bseg
+      WHERE kunnr = lt_bseg-kunnr.
+
+    SELECT addrnumber
+           persnumber
+           date_from
+           consnumber
+           smtp_addr
+        FROM adr6
+        INTO TABLE it_mail
+         FOR ALL ENTRIES IN lt_kna1
+        WHERE addrnumber = lt_kna1-adrnr.
+
+  ENDIF.
+
+*    SELECT lifnr name1
+*      FROM lfa1
+*      INTO TABLE it_vendor
+*      FOR ALL ENTRIES IN it_ekko
+*      WHERE lifnr = it_ekko-lifnr.
+
+  LOOP AT it_mail INTO wa_mail.
+    v_email = wa_mail-smtp_addr.
+  ENDLOOP.
+
+  LOOP AT it_final INTO wa_final.
+
+    CALL FUNCTION 'SSF_FUNCTION_MODULE_NAME'
+      EXPORTING
+        formname           = 'ZFI_ROYALTY'
+*       VARIANT            = ' '
+*       DIRECT_CALL        = ' '
+      IMPORTING
+        fm_name            = fm_name
+      EXCEPTIONS
+        no_form            = 1
+        no_function_module = 2
+        OTHERS             = 3.
+    IF sy-subrc <> 0.
+* Implement suitable error handling here
+    ENDIF.
+
+    CALL FUNCTION 'SSF_GET_DEVICE_TYPE'
+      EXPORTING
+        i_language             = v_language
+        i_application          = 'SAPDEFAULT'
+      IMPORTING
+        e_devtype              = v_e_devtype
+      EXCEPTIONS
+        no_language            = 1
+        language_not_installed = 2
+        no_devtype_found       = 3
+        system_error           = 4
+        OTHERS                 = 5.
+    IF sy-subrc <> 0.
+* Implement suitable error handling here
+    ENDIF.
+
+    DATA: lv_frgke TYPE frgke.
+    CLEAR lv_frgke.
+
+*    SELECT SINGLE * FROM nast INTO gs_nast WHERE objky = im_ekko-ebeln.
+
+    IF lv_frgke = 1.
+      wa_control_par-startpage = '%PAGE2'.
+      gwa_ssfcompop-tdnoprint = ' ' .
+    ELSE.
+      gwa_ssfcompop-tdnoprint = 'X' .
+
+    ENDIF.
+    wa_control_par-no_dialog = abap_true.
+    wa_control_par-getotf = abap_true.
+    wa_control_par-langu = 'E'.
+    gwa_ssfcompop-tdnoprev  = 'X'.
+    gwa_ssfcompop-tdprinter = v_e_devtype.
+
+    MOVE-CORRESPONDING wa_final TO wa.
+
+    CALL FUNCTION fm_name "'/1BCDWB/SF00000364'
+      EXPORTING
+*       ARCHIVE_INDEX      =
+*       ARCHIVE_INDEX_TAB  =
+*       ARCHIVE_PARAMETERS =
+        control_parameters = wa_control_par
+*       MAIL_APPL_OBJ      =
+*       MAIL_RECIPIENT     =
+*       MAIL_SENDER        =
+        output_options     = gwa_ssfcompop
+        user_settings      = 'X'
+        wa_data            = wa
+      IMPORTING
+*       DOCUMENT_OUTPUT_INFO       =
+        job_output_info    = ls_job_info
+*       JOB_OUTPUT_OPTIONS =
+      EXCEPTIONS
+        formatting_error   = 1
+        internal_error     = 2
+        send_error         = 3
+        user_canceled      = 4
+        OTHERS             = 5.
+    IF sy-subrc <> 0.
+* Implement suitable error handling here
+    ENDIF.
+
+
+    LOOP AT ls_job_info-otfdata INTO ls_otf.
+
+      APPEND ls_otf TO is_otf.
+
+    ENDLOOP.
+
+    REFRESH : i_tline[].
+    i_otf[] = ls_job_info-otfdata[].
+
+* Import Binary file and filesize
+
+    CALL FUNCTION 'CONVERT_OTF'
+      EXPORTING
+        format                = 'PDF'
+*       max_linewidth         = 132
+*       ARCHIVE_INDEX         = ' '
+*       COPYNUMBER            = 0
+*       ASCII_BIDI_VIS2LOG    = ' '
+*       PDF_DELETE_OTFTAB     = ' '
+*       PDF_USERNAME          = ' '
+*       PDF_PREVIEW           = ' '
+*       USE_CASCADING         = ' '
+*       MODIFIED_PARAM_TABLE  =
+      IMPORTING
+        bin_filesize          = v_len_in
+        bin_file              = i_xstring   " This is NOT Binary. This is Hexa
+      TABLES
+        otf                   = i_otf
+        lines                 = i_tline
+      EXCEPTIONS
+        err_max_linewidth     = 1
+        err_format            = 2
+        err_conv_not_possible = 3
+        err_bad_otf           = 4
+        OTHERS                = 5.
+    IF sy-subrc <> 0.
+* Implement suitable error handling here
+    ENDIF.
+
+    REFRESH : i_objbin[].
+* Convert Hexa String to Binary format
+
+    DATA lt_pdf_data TYPE solix_tab.
+
+    CALL METHOD cl_document_bcs=>xstring_to_solix
+      EXPORTING
+        ip_xstring = i_xstring
+      RECEIVING
+        rt_solix   = lt_pdf_data.
+
+
+*********************** ==> Mail Triggering
+
+    DATA: salutation  TYPE string.
+    DATA: body        TYPE string.
+    DATA: footer      TYPE string.
+    DATA: lv_email    TYPE adr6-smtp_addr.
+    DATA: lv_subject      TYPE so_obj_des,
+          v_message       TYPE string,
+          v_bcs_exception TYPE REF TO cx_document_bcs,
+          v_snd_exception TYPE REF TO cx_send_req_bcs.
+
+    DATA : i_text TYPE bcsy_text. "Table for body
+    DATA : w_text LIKE LINE OF i_text. "work area for message body
+
+    DATA: lo_send_request TYPE REF TO cl_bcs,
+          lo_document     TYPE REF TO cl_document_bcs,
+          lo_sender       TYPE REF TO if_sender_bcs,
+          lo_recipient    TYPE REF TO if_recipient_bcs, " VALUE IS INITIAL,
+          lt_message_body TYPE bcsy_text,
+          lx_document_bcs TYPE REF TO cx_document_bcs,
+          lv_sent_to_all  TYPE sy-binpt,
+          lv_text(15)     TYPE c,
+          i_lines         TYPE i,
+          l_size          TYPE sood-objlen,
+          sender          TYPE REF TO cl_cam_address_bcs,
+          sent_to_all     TYPE os_boolean.
+    CLEAR :lv_text.
+
+
+
+    lv_email = v_email.
+
+    lo_send_request = cl_bcs=>create_persistent( ).
+
+    CONCATENATE 'Dear Customer,' '' INTO w_text SEPARATED BY ''.
+    APPEND w_text TO i_text.
+    CLEAR w_text.
+
+    CONCATENATE  '' ''  INTO  w_text SEPARATED BY '' .
+    APPEND w_text TO i_text.
+    CLEAR w_text.
+
+    CONCATENATE 'Please see the attached docment  for invoice raised for the respective Supply of services.' '' INTO w_text SEPARATED BY ''.
+    APPEND w_text TO i_text.
+    CLEAR w_text.
+
+    CONCATENATE 'For any clarity, information you may contact to concern Person.' '' INTO w_text SEPARATED BY ''.
+    APPEND w_text TO i_text.
+    CLEAR w_text.
+
+    CONCATENATE  '' ''  INTO  w_text SEPARATED BY '' .
+    APPEND w_text TO i_text.
+    CLEAR w_text.
+
+    CONCATENATE 'Thanks!' '' INTO w_text SEPARATED BY ''.
+    APPEND w_text TO i_text.
+    CLEAR w_text.
+*
+*SELECT single lifnr from ekko into wm_ekko where ebeln = im_ekko-ebeln.
+*
+*select single Name1 from lfa1 into wm_lfa1 where lifnr = wm_ekko-lifnr.
+
+*     LOOP AT it_vendor INTO wa_vendor.
+*      v_vendor = wa_vendor-Name1.
+*    ENDLOOP.
+
+    CONCATENATE 'INVOICE' '_' wa-belnr INTO lv_subject SEPARATED BY ''.
+
+    "put your text into the document
+    lo_document = cl_document_bcs=>create_document(
+    i_type = 'RAW'
+    i_text = i_text
+    i_length  = '12'
+    i_subject = lv_subject ).
+
+    i_lines = lines( lt_pdf_data ).
+    l_size = i_lines * 255.
+
+    REFRESH : i_text.
+    CLEAR : i_text.
+
+    CALL METHOD lo_document->add_attachment
+      EXPORTING
+        i_attachment_type    = 'PDF'
+        i_attachment_size    = l_size
+        i_attachment_subject = lv_subject
+        i_att_content_hex    = lt_pdf_data.
+*      CATCH cx_document_bcs INTO lx_document_bcs.
+
+
+
+    lo_send_request->set_document( lo_document ).
+    lo_send_request->set_sender( sender ).
+
+    lo_recipient = cl_cam_address_bcs=>create_internet_address( lv_email ).
+
+    IF lv_email IS NOT INITIAL .
+*Set recipient
+
+      CALL METHOD lo_send_request->add_recipient(
+        EXPORTING
+          i_recipient = lo_recipient
+          i_express   = 'X' ).
+
+      sent_to_all = lo_send_request->send( i_with_error_screen = 'X' ).
+
+      COMMIT WORK.
+
+    ENDIF.
+  ENDLOOP.
+
+*    clear : wa_final,
+*            wa.
+*    REFRESH : i_text.
+
+
+ENDIF.
