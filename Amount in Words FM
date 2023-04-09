@@ -1,0 +1,290 @@
+FUNCTION z_in_chg_inr_wrds .
+*"----------------------------------------------------------------------
+*"*"Local Interface:
+*" IMPORTING
+*" REFERENCE(AMT_IN_NUM) LIKE PC207-BETRG
+*" EXPORTING
+*" REFERENCE(AMT_IN_WORDS) TYPE C
+*" EXCEPTIONS
+*" DATA_TYPE_MISMATCH
+*"----------------------------------------------------------------------
+
+DATA: maxno TYPE f.
+maxno = 10 ** 15.
+IF ( amt_in_num >= maxno ).
+RAISE data_type_mismatch.
+ENDIF.
+*data declaration-------------------------------------------------*
+DATA: ten(10),single(6),final(130),dec(20),res TYPE i,rp(7).
+DATA: a1 TYPE i,a2 TYPE i,str(20),d TYPE p,m TYPE i,wrdrep(20).
+DATA: cntr TYPE i,f1 TYPE i,f2 TYPE i,f3 TYPE i,f4 TYPE i,f5 TYPE i.
+DATA: f6 TYPE i,f7 TYPE i,f8 TYPE i,f9 TYPE i.
+DATA: f10 TYPE i,f11 TYPE i,f12 TYPE i,f13 TYPE i.
+DATA: f14 TYPE i,f15 TYPE i.
+
+d = ( amt_in_num * 100 ) DIV 100.
+res = ( amt_in_num * 100 ) MOD 100.
+
+f1 = res DIV 10.
+f2 = res MOD 10.
+PERFORM setnum USING f1 f2 CHANGING wrdrep.
+f1 = 0. f2 = 0.
+dec = wrdrep.
+cntr = 1.
+*Go in a loop dividing the numbers by 10 and store the
+*residues as a digit in f1 .... f9
+WHILE ( d > 0 ).
+m = d MOD 10.
+d = d DIV 10.
+CASE cntr.
+WHEN 1. f1 = m.
+WHEN 2. f2 = m.
+WHEN 3. f3 = m.
+WHEN 4. f4 = m.
+WHEN 5. f5 = m.
+WHEN 6. f6 = m.
+WHEN 7. f7 = m.
+WHEN 8. f8 = m.
+WHEN 9. f9 = m.
+WHEN 10. f10 = m.
+WHEN 11. f11 = m.
+WHEN 12. f12 = m.
+WHEN 13. f13 = m.
+WHEN 14. f14 = m.
+WHEN 15. f15 = m.
+ENDCASE.
+cntr = cntr + 1.
+ENDWHILE.
+cntr = cntr - 1.
+*Going in loop and sending pair of digits to function setnum to get
+*the standing value of digits in words
+WHILE ( cntr > 0 ).
+
+IF ( cntr <= 2 ).
+PERFORM setnum USING f2 f1 CHANGING wrdrep.
+CONCATENATE final wrdrep INTO final SEPARATED BY ' '.
+ELSEIF ( cntr = 3 ).
+IF ( f3 <> 0 ).
+PERFORM setnum USING 0 f3 CHANGING wrdrep.
+CONCATENATE final wrdrep 'HUNDRED' INTO final SEPARATED BY ' '.
+ENDIF.
+ELSEIF ( cntr <= 5 ).
+IF ( f5 <> 0 ) OR ( f4 <> 0 ).
+PERFORM setnum USING f5 f4 CHANGING wrdrep.
+CONCATENATE final wrdrep 'THOUSAND' INTO final SEPARATED BY ' '
+.
+ENDIF.
+IF ( cntr = 4 ).
+cntr = 5.
+ENDIF.
+ELSEIF ( cntr <= 7 ).
+IF ( f7 <> 0 ) OR ( f6 <> 0 ).
+PERFORM setnum USING f7 f6 CHANGING wrdrep.
+CONCATENATE final wrdrep 'LAKH' INTO final SEPARATED BY ' ' .
+ENDIF.
+* ELSEIF ( cntr <= 9 ).
+ELSEIF ( cntr <= 9 ).
+PERFORM setnum USING f9 f8 CHANGING wrdrep.
+CONCATENATE final wrdrep 'CRORE' INTO final SEPARATED BY ' ' .
+
+ELSEIF ( cntr >= 10 ).
+PERFORM setnum USING f9 f8 CHANGING wrdrep.
+CONCATENATE final wrdrep 'CRORE' INTO final SEPARATED BY ' ' .
+CASE f10.
+WHEN 1. CONCATENATE 'ONE HUNDRED' final INTO final SEPARATED BY ' '.
+WHEN 2. CONCATENATE 'TWO HUNDRED' final INTO final SEPARATED BY ' '.
+WHEN 3. CONCATENATE 'THREE HUNDRED' final INTO final SEPARATED BY ' '.
+WHEN 4. CONCATENATE 'FOUR HUNDRED' final INTO final SEPARATED BY ' '.
+WHEN 5. CONCATENATE 'FIVE HUNDRED' final INTO final SEPARATED BY ' '.
+WHEN 6. CONCATENATE 'SIX HUNDRED' final INTO final SEPARATED BY ' '.
+WHEN 7. CONCATENATE 'SEVEN HUNDRED' final INTO final SEPARATED BY ' '.
+WHEN 8. CONCATENATE 'EIGHT HUNDRED' final INTO final SEPARATED BY ' '.
+WHEN 9. CONCATENATE 'NINE HUNDRED' final INTO final SEPARATED BY ' '.
+
+ENDCASE.
+
+case f11.
+WHEN 1. CONCATENATE 'ONE THOUSAND' final INTO final SEPARATED BY ' '.
+WHEN 2. CONCATENATE 'TWO THOUSAND' final INTO final SEPARATED BY ' '.
+WHEN 3. CONCATENATE 'THREE THOUSAND' final INTO final SEPARATED BY ' '.
+WHEN 4. CONCATENATE 'FOUR THOUSAND' final INTO final SEPARATED BY ' '.
+WHEN 5. CONCATENATE 'FIVE THOUSAND' final INTO final SEPARATED BY ' '.
+WHEN 6. CONCATENATE 'SIX THOUSAND' final INTO final SEPARATED BY ' '.
+WHEN 7. CONCATENATE 'SEVEN THOUSAND' final INTO final SEPARATED BY ' '.
+WHEN 8. CONCATENATE 'EIGHT THOUSAND' final INTO final SEPARATED BY ' '.
+WHEN 9. CONCATENATE 'NINE THOUSAND' final INTO final SEPARATED BY ' '.
+ENDCASE.
+ENDIF.
+
+IF cntr > 9.
+cntr = cntr - 4.
+ELSE.
+cntr = cntr - 2.
+ENDIF.
+ENDWHILE.
+*Output the final
+IF ( final = ' ONE' ).rp = 'Rupee'(003).ELSE. rp = 'Rupees'(001).ENDIF
+.
+IF ( final = '' ) AND ( dec = '' ).
+final = 'NIL'.
+ELSEIF ( final = '' ).
+CONCATENATE dec 'Paise'(002) INTO final SEPARATED BY ' ' .
+ELSEIF ( dec = '' ).
+
+CONCATENATE final rp INTO final SEPARATED BY ' ' .
+ELSE.
+CONCATENATE final rp dec 'Paise'(002) INTO final SEPARATED BY ' ' .
+ENDIF.
+
+amt_in_words = final.
+
+ENDFUNCTION.
+
+*&---------------------------------------------------------------------*
+*& Form SETNUM
+*&---------------------------------------------------------------------*
+* converts a number into words *
+*----------------------------------------------------------------------*
+* --> a1,a2 two digits for 2nd and 1st place
+* <-- str outpur in words
+*----------------------------------------------------------------------*
+DATA: ten(10),single(6),str(20), hundred(18).
+*
+FORM setnum USING a1 a2 CHANGING str.
+ten = ''.single = ''.
+IF ( a1 = 1 ).
+
+CASE a2.
+WHEN 0. ten = 'TEN'.
+WHEN 1. ten = 'ELEVEN'.
+WHEN 2. ten = 'TWELVE'.
+WHEN 3. ten = 'THIRTEEN'.
+WHEN 4. ten = 'FOURTEEN'.
+WHEN 5. ten = 'FIFTEEN'.
+WHEN 6. ten = 'SIXTEEN'.
+WHEN 7. ten = 'SEVENTEEN'.
+WHEN 8. ten = 'EIGHTEEN'.
+WHEN 9. ten = 'NINETEEN'.
+ENDCASE.
+ELSE.
+
+CASE a2.
+WHEN 1. single = 'ONE'.
+WHEN 2. single = 'TWO'.
+WHEN 3. single = 'THREE'.
+WHEN 4. single = 'FOUR'.
+WHEN 5. single = 'FIVE'.
+WHEN 6. single = 'SIX'.
+WHEN 7. single = 'SEVEN'.
+WHEN 8. single = 'EIGHT'.
+WHEN 9. single = 'NINE'.
+ENDCASE.
+CASE a1.
+WHEN 2. ten = 'TWENTY'.
+WHEN 3. ten = 'THIRTY'.
+WHEN 4. ten = 'FORTY'.
+WHEN 5. ten = 'FIFTY'.
+WHEN 6. ten = 'SIXTY'.
+WHEN 7. ten = 'SEVENTY'.
+WHEN 8. ten = 'EIGHTY'.
+WHEN 9. ten = 'NINETY'.
+ENDCASE.
+
+ENDIF.
+IF ( single <> '' ) AND ( ten <> '' ).
+CONCATENATE ten single INTO str SEPARATED BY ' '.
+ELSEIF single = ''.
+str = ten.
+ELSE.
+str = single.
+ENDIF.
+
+ENDFORM. " SETNUM
+
+FORM setnum1 USING a3 a1 a2 CHANGING str.
+ten = ''.single = ''. hundred = ''.
+
+CASE a3.
+WHEN 1. hundred = 'ONE HUNDRED'.
+WHEN 2. hundred = 'TWO HUNDRED'.
+WHEN 3. hundred = 'THREE HUNDRED'.
+WHEN 4. hundred = 'FOUR HUNDRED'.
+WHEN 5. hundred = 'FIVE HUNDRED'.
+WHEN 6. hundred = 'SIX HUNDRED'.
+WHEN 7. hundred = 'SEVEN HUNDRED'.
+WHEN 8. hundred = 'EIGHT HUNDRED'.
+WHEN 9. hundred = 'NINE HUNDRED'.
+
+ENDCASE.
+
+IF ( a1 = 0 ).
+CASE a2.
+WHEN 1. ten = 'ONE'.
+WHEN 2. ten = 'TWO'.
+WHEN 3. ten = 'THREE'.
+WHEN 4. ten = 'FOUR'.
+WHEN 5. ten = 'FIVE'.
+WHEN 6. ten = 'SIX'.
+WHEN 7. ten = 'SEVEN'.
+WHEN 8. ten = 'EIGHT'.
+WHEN 9. ten = 'NINE'.
+ENDCASE.
+ENDIF.
+
+IF ( a1 = 1 ).
+
+CASE a2.
+WHEN 0. ten = 'TEN'.
+WHEN 1. ten = 'ELEVEN'.
+WHEN 2. ten = 'TWELVE'.
+WHEN 3. ten = 'THIRTEEN'.
+WHEN 4. ten = 'FOURTEEN'.
+WHEN 5. ten = 'FIFTEEN'.
+WHEN 6. ten = 'SIXTEEN'.
+WHEN 7. ten = 'SEVENTEEN'.
+WHEN 8. ten = 'EIGHTEEN'.
+WHEN 9. ten = 'NINETEEN'.
+ENDCASE.
+ELSE.
+
+CASE a2.
+WHEN 1. single = 'ONE'.
+WHEN 2. single = 'TWO'.
+WHEN 3. single = 'THREE'.
+WHEN 4. single = 'FOUR'.
+WHEN 5. single = 'FIVE'.
+WHEN 6. single = 'SIX'.
+WHEN 7. single = 'SEVEN'.
+WHEN 8. single = 'EIGHT'.
+WHEN 9. single = 'NINE'.
+ENDCASE.
+CASE a1.
+WHEN 2. ten = 'TWENTY'.
+WHEN 3. ten = 'THIRTY'.
+WHEN 4. ten = 'FORTY'.
+WHEN 5. ten = 'FIFTY'.
+WHEN 6. ten = 'SIXTY'.
+WHEN 7. ten = 'SEVENTY'.
+WHEN 8. ten = 'EIGHTY'.
+WHEN 9. ten = 'NINETY'.
+ENDCASE.
+
+ENDIF.
+
+
+IF ( hundred <> '' ) AND ( single <> '' ) AND ( ten <> '' ).
+CONCATENATE hundred ten single INTO str SEPARATED BY ' '.
+ELSEIF ( single <> '' ) AND ( ten <> '' ).
+CONCATENATE ten single INTO str SEPARATED BY ' '.
+ELSEIF single = ''.
+str = ten.
+ELSE.
+str = single.
+ENDIF.
+
+IF hundred <> ''.
+CONCATENATE hundred str INTO str SEPARATED BY ' '.
+ENDIF.
+
+
+ENDFORM. " SETNUM1
