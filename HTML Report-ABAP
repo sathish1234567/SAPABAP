@@ -1,0 +1,827 @@
+*&---------------------------------------------------------------------*
+*& Report ZPTS_BUNKER_LEVEL_REPORT
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*&  PURPOSE         : Bunker Level Report                              *
+*&  PROGRAM NAME    : ZPTS_BUNKER_LEVEL_REPORT                         *
+*&  PROJECT         : NA                                               *
+*&  CATEGORY        : Report                                           *
+*&  SAP RELEASE     : ECC 6.0                                          *
+*&  BUSINESS ANALYST:                                                  *
+*&  DEVELOPED BY    : Shaik Assalam                                    *
+*&  START DATE      : 15.05.2023                                                 *
+*&  END DATE        : on or before 31.05.2023                                                 *
+*&  TRANS. REQ. NO. : ECDK946461                                       *
+*&---------------------------------------------------------------------*
+
+REPORT zpts_bunker_level_report.
+
+*&---------------------------------------------------------------------*
+*&        Declearation and selection screen
+*&---------------------------------------------------------------------*
+INCLUDE zpts_bunker_level_report_top.
+*&---------------------------------------------------------------------*
+*&        Decleration for sub routines
+*&---------------------------------------------------------------------*
+INCLUDE zpts_bunker_level_report_f01.
+
+AT SELECTION-SCREEN.
+  PERFORM validation.
+
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_stage-low.
+  PERFORM f4_help_unit USING p_stage-low.
+
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_stage-high.
+  PERFORM f4_help_unit USING p_stage-high.
+
+*AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_file.
+*  PERFORM f4_help_file.
+
+START-OF-SELECTION.
+  PERFORM get_data.
+
+END-of-SELECTION.
+  PERFORM display.
+  
+  
+  
+  ****************************************************
+  ****************************************************
+  ****************************************************
+  *&---------------------------------------------------------------------*
+*&  Include           ZPTS_BUNKER_LEVEL_REPORT_TOP
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*&  PURPOSE         : Bunker Level Report                              *
+*&  PROGRAM NAME    : ZPTS_BUNKER_LEVEL_REPORT                         *
+*&  PROJECT         : NA                                               *
+*&  CATEGORY        : Report                                           *
+*&  SAP RELEASE     : ECC 6.0                                          *
+*&  BUSINESS ANALYST:                                                  *
+*&  DEVELOPED BY    : Shaik Assalam                                    *
+*&  START DATE      : 15.05.2023                                                 *
+*&  END DATE        : on or before 31.05.2023                                                 *
+*&  TRANS. REQ. NO. : ECDK946461                                       *
+*&---------------------------------------------------------------------*
+TABLES: zpts_para_value.
+TYPES : BEGIN OF gty_t001w,
+          werks TYPE werks_d,
+          name1 TYPE name1,
+        END OF gty_t001w.
+
+
+" Types Declerations
+DATA: BEGIN OF x_crhd,
+        arbpl TYPE crhd-arbpl,
+        werks TYPE crhd-werks,
+        stand TYPE crhd-stand,
+      END OF x_crhd.
+
+DATA: BEGIN OF x_type,
+        param      LIKE zpts_para_type-param,
+        sr_no      LIKE zpts_para_type-sr_no,
+        value_type LIKE zpts_para_type-value_type,
+        descr      LIKE zpts_para_type-descr,
+        uom        LIKE zpts_para_type-uom,
+      END OF x_type.
+
+DATA: BEGIN OF x_value,
+        werks  TYPE zpts_para_value-werks,
+        stage  TYPE zpts_para_value-stage,
+        unit   TYPE zpts_para_value-unit,
+        date1  TYPE zpts_para_value-date1,
+        param  TYPE zpts_para_value-param,
+        value1 TYPE tims,
+        value2 TYPE tims,
+        value3 TYPE tims,
+        value4 TYPE tims,
+        uom    TYPE zpts_para_value-uom,
+      END OF x_value.
+
+
+
+*&---------------------------------------------------------------------*
+*                          Data Object Declerations                       *
+*&---------------------------------------------------------------------*
+" Data Object Declerations
+DATA gt_bunker TYPE TABLE OF zbunker.
+DATA gt_bunker_lvl TYPE TABLE OF zbunker_dtls.
+DATA gt_bunker_lvl_d TYPE TABLE OF zbunker_dtls.
+DATA gw_bunker_lvl TYPE zbunker_dtls.
+DATA gt_para_value TYPE TABLE OF zpts_para_value.
+DATA: t_html   TYPE STANDARD TABLE OF w3html WITH HEADER LINE.
+DATA gt_t001w TYPE TABLE OF gty_t001w.
+DATA gw_t001w TYPE gty_t001w.
+
+
+DATA: it_value LIKE TABLE OF zpts_para_value,
+      wa_value LIKE zpts_para_value,
+      it_type  LIKE TABLE OF x_type,
+      wa_type  LIKE x_type,
+      it_crhd  LIKE TABLE OF x_crhd,
+      wa_crhd  LIKE x_crhd.
+
+DATA : it_auxdata   TYPE STANDARD TABLE OF zpts_aux_data,
+       it_auxdata_d TYPE STANDARD TABLE OF zpts_aux_data,
+       wa_auxdata   TYPE zpts_aux_data.
+"gt_t001w TYPE TABLE OF gty_t001w,
+"gw_t001w TYPE gty_t001w.
+
+DATA gv_file TYPE string.
+
+*&---------------------------------------------------------------------*
+*                          SELECTION SCREEN                            *
+*&---------------------------------------------------------------------*
+" selection screen.
+SELECTION-SCREEN: BEGIN OF BLOCK b WITH FRAME TITLE TEXT-002.
+SELECT-OPTIONS : p_werks FOR zpts_para_value-werks OBLIGATORY,
+             p_stage FOR zpts_para_value-unit,
+             p_date  FOR zpts_para_value-date1 OBLIGATORY.
+
+PARAMETERS:
+  p_file        TYPE filename_al11 NO-DISPLAY ."OBLIGATORY .
+
+SELECTION-SCREEN : END OF BLOCK b.
+
+
+**********************************************************************
+**********************************************************************
+**********************************************************************
+**********************************************************************
+*----------------------------------------------------------------------*
+***INCLUDE ZPTS_BUNKER_LEVEL_REPORT_F01.
+*----------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*&      Form  F4_HELP_UNIT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM f4_help_unit USING lv_stage.
+  DATA : BEGIN OF it_l_rr OCCURS 0,
+           arbpl TYPE crhd-arbpl,
+         END OF it_l_rr.
+
+  DATA x_l_rr LIKE LINE OF it_l_rr.
+  DATA: g_plant TYPE werks_d.
+  DATA it_l_ret_tab LIKE ddshretval OCCURS 0 WITH HEADER LINE.
+  DATA it_l_dynpfields LIKE dynpread OCCURS 0 WITH HEADER LINE.
+
+  SELECT arbpl
+    FROM crhd
+    INTO TABLE it_l_rr WHERE werks IN p_werks[]
+                        AND  verwe = '0002'.
+
+  CALL FUNCTION 'F4IF_INT_TABLE_VALUE_REQUEST'
+    EXPORTING
+      retfield        = 'UNIT' "c_rrno
+      dynpprog        = sy-repid
+      dynpnr          = sy-dynnr
+*     dynprofield     = 'ZFMP_RR_HEADER-RR_NO'
+      value_org       = 'S' "c_s
+    TABLES
+*     field_tab       = l_t_field_tab
+      value_tab       = it_l_rr
+      return_tab      = it_l_ret_tab
+    EXCEPTIONS
+      parameter_error = 1
+      no_values_found = 2
+      OTHERS          = 3.
+  IF sy-subrc <> 0.
+    MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+            WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+
+  ELSE.
+    lv_stage = it_l_ret_tab-fieldval.
+  ENDIF.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  VALIDATION
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM validation .
+  DATA lv_name1 TYPE name1.
+  SELECT SINGLE name1 FROM t001w INTO lv_name1
+    WHERE werks IN p_werks[].
+  IF sy-subrc <> 0.
+    MESSAGE TEXT-010 TYPE 'E'.
+  ENDIF.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  GET_DATA
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM get_data .
+  DATA: c_verwe TYPE crhd-verwe VALUE '0002'.
+  SELECT arbpl
+          werks
+          stand FROM crhd INTO TABLE it_crhd
+          WHERE werks IN p_werks[] AND
+                verwe = c_verwe AND
+*               stand = p_stage.
+                arbpl IN p_stage[].
+
+
+  IF sy-subrc NE 0.
+    MESSAGE TEXT-001 TYPE 'I'.
+    LEAVE LIST-PROCESSING.
+  ELSE.
+    SORT it_crhd BY werks.
+    DELETE ADJACENT DUPLICATES FROM it_crhd COMPARING werks.
+    IF NOT it_crhd IS INITIAL.
+      SELECT werks name1 FROM t001w
+             INTO TABLE gt_t001w
+             FOR ALL ENTRIES IN it_crhd
+             WHERE werks = it_crhd-werks.
+    ENDIF.
+  ENDIF.
+
+
+  SELECT werks
+       stage
+       unit
+       date1
+       param
+       value1
+       value2
+       value3
+       value4
+       value5
+       value6
+       value7
+       value8
+       value9
+       value10
+       uom FROM zpts_para_value
+  INTO CORRESPONDING FIELDS OF TABLE it_value
+  WHERE werks IN p_werks[] AND
+        unit IN p_stage[] AND
+        date1 IN p_date[].
+
+  SELECT * FROM zbunker_dtls
+           INTO TABLE gt_bunker_lvl
+           WHERE werks IN p_werks[] AND
+                 unit_no IN p_stage[].
+  IF sy-subrc EQ 0.
+    SORT gt_bunker_lvl BY werks unit_no.
+    gt_bunker_lvl_d = gt_bunker_lvl.
+  ENDIF.
+
+
+  SELECT * FROM zpts_aux_data INTO TABLE it_auxdata
+                  WHERE plant IN  p_werks[]
+                  AND auxdate IN p_date[]
+                  AND aux_typ = 'COAL MILL'.
+  IF sy-subrc EQ 0.
+    DELETE it_auxdata WHERE run_hrs IS INITIAL.
+
+    SORT it_auxdata BY plant unit.
+  ENDIF.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  DISPALY
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM display .
+  DATA lv_string TYPE string.
+  DATA lv_cnt1 TYPE i.
+  CLEAR t_html.
+  REFRESH t_html[].
+  t_html-line = '<html>'.
+  APPEND t_html.
+
+  t_html-line = '<style>'.
+  APPEND t_html.
+
+  CONCATENATE 'table {'
+    'border: 1px solid black;'
+    'border-collapse: collapse; }'
+   'th, td {'
+    'border: 1px solid black;'
+    'border-collapse: collapse;'
+         'word-wrap: break-word;'
+         'width: 500px;'
+       'font-family:verdana;'
+       'font-size :10px;'
+       'text-align:center;'
+       '}'
+
+  INTO t_html-line.
+  APPEND t_html.
+
+  t_html-line = '</style>' .
+  APPEND t_html.
+
+  t_html-line = '<body>'.
+  APPEND t_html.
+
+  t_html-line = '<table id="sale" style="width:80%; border: 1px solid black;border-collapse: collapse; ">'.
+  APPEND t_html.
+
+  t_html-line = '<thead>'.
+  APPEND t_html.
+
+  t_html-line = '<tr>'.
+  APPEND t_html.
+
+  " Row-1 -Title
+  t_html-line = '<th colspan=20 style="font-size:15px">Thermal Power Station Units Bunker Level Report</th>'.
+  APPEND t_html.
+
+  t_html-line = '</tr>'.
+  APPEND t_html.
+
+  "Row-2 Date
+  t_html-line = '<tr>'.
+  APPEND t_html.
+
+  t_html-line = '<th>Date</th>'.
+  APPEND t_html.
+  DATA lv_datum TYPE char10.
+
+  CALL FUNCTION 'CONVERSION_EXIT_PDATE_OUTPUT'
+    EXPORTING
+      input  = sy-datum
+    IMPORTING
+      output = lv_datum.
+
+  CONCATENATE '<th colspan=19 style ="text-align: left" >' lv_datum '</th>' INTO t_html-line.
+  APPEND t_html.
+
+  t_html-line = '</tr>'.
+  APPEND t_html.
+
+  "Row3- Heading1
+  t_html-line = '<tr >'.
+  APPEND t_html.
+
+  CONCATENATE '<th rowspan="3">TPS </th>'
+  '<th rowspan="3">Unit No. </th>'
+  '<th rowspan="3">Unit Capacity </th>'
+  '<th rowspan="3">Daily Coal requirement in Tonnes </th>'
+    '<th colspan="4">Coal Mill details </th>'
+      '<th colspan="12">Bunker Details </th>' INTO t_html-line.
+  APPEND t_html.
+
+  t_html-line = '</tr>' .
+  APPEND t_html.
+
+  " Row-4 - Coal Mill Details Sub headings
+  t_html-line = '<tr>' .
+  APPEND t_html.
+
+  CONCATENATE
+  '<th rowspan="2" style="background-color:#ADD8E6">Type of</th>'
+  '<th rowspan="2" style="background-color:#ADD8E6">No Of Mills </th>'
+  '<th rowspan="2" style="background-color:#ADD8E6">Capacity Of Mills Tonnes/ </th>'
+  INTO t_html-line.
+  APPEND t_html.
+
+  CONCATENATE
+  '<th rowspan="2">No Of Mills in </th>'
+  '<th rowspan="2" style="background-color:RGBA(152,195,119,0.6)">No Of Bunkers </th>'
+  '<th rowspan="2" style="background-color:RGBA(152,195,119,0.6)">Bunker Cpacity</th>'
+  '<th colspan="10"> Bunker Level in %</th>'
+  INTO t_html-line.
+  APPEND t_html.
+
+  t_html-line = '</tr>' .
+  APPEND t_html.
+
+  "Row -5 heading A to K
+  t_html-line = '<tr>' .
+  APPEND t_html.
+
+  CONCATENATE '<th>A </th>'
+  '<th>B </th>'
+  '<th>C </th>'
+  '<th>D </th>'
+  '<th>E </th>'
+  '<th>F </th>'
+  '<th>G </th>'
+  '<th>H </th>'
+  '<th>I </th>'
+  '<th>J </th>'
+*  '<th>K </th>'
+  INTO t_html-line.
+  APPEND t_html.
+
+  t_html-line = '</tr>' .
+  APPEND t_html.
+
+  t_html-line = '</thead>' .
+  APPEND t_html.
+
+  t_html-line = '<tbody>' .
+  APPEND t_html.
+
+  DATA lv_lines TYPE i.
+  DATA lv_lines_c TYPE char4.
+  DATA lv_cnt TYPE i VALUE 1.
+  LOOP AT it_crhd INTO wa_crhd.
+    lv_cnt = 1.
+    CLEAR lv_lines.
+    CLEAR lv_lines_c.
+    REFRESH gt_bunker_lvl_d.
+    gt_bunker_lvl_d = gt_bunker_lvl.
+    DELETE gt_bunker_lvl_d
+           WHERE NOT werks = wa_crhd-werks.
+*           gw_bunker_lvl-werks.
+
+    lv_lines = lines( gt_bunker_lvl_d ).
+    lv_lines_c = lv_lines.
+    CONDENSE lv_lines_c.
+
+
+*    LOOP AT it_auxdata INTO wa_auxdata WHERE
+*                                       plant = wa_crhd-werks AND
+*                                       unit = wa_crhd-arbpl .
+*
+*
+*    ENDLOOP.
+    LOOP AT gt_bunker_lvl INTO gw_bunker_lvl
+                      WHERE werks = wa_crhd-werks.
+
+*      IF NOT lv_lines IS INITIAL.
+      t_html-line = '<tr>' .
+      APPEND t_html.
+
+      IF lv_cnt = 1.
+        READ TABLE gt_t001w INTO gw_t001w
+                   WITH KEY werks = gw_bunker_lvl-werks.
+        IF sy-subrc EQ 0.
+          CONCATENATE '<td style="width:10%" rowspan=' lv_lines_c '>'
+                      gw_t001w-name1 '</td>'
+                      INTO t_html-line.
+          APPEND t_html.
+        ENDIF.
+      ENDIF.
+
+
+      CONCATENATE '<td>' gw_bunker_lvl-unit_no+4(2) '</td>' INTO t_html-line.
+      APPEND t_html.
+
+      CONCATENATE '<td>' gw_bunker_lvl-mill_cp '</td>' INTO t_html-line.
+      APPEND t_html.
+
+
+      CLEAR lv_string.
+      lv_string = gw_bunker_lvl-coal_req_d.
+      CONDENSE lv_string NO-GAPS.
+      CONCATENATE '<td>' lv_string '</td>' INTO t_html-line.
+      APPEND t_html.
+
+      CLEAR lv_string.
+      lv_string = gw_bunker_lvl-type.
+      CONDENSE lv_string NO-GAPS.
+      CONCATENATE '<td style="background-color:#ADD8E6">' lv_string '</td>' INTO t_html-line.
+      APPEND t_html.
+
+      CLEAR lv_string.
+      lv_string = gw_bunker_lvl-mill_nos.
+      CONDENSE lv_string NO-GAPS.
+      CONCATENATE '<td style="background-color:#ADD8E6">' lv_string '</td>' INTO t_html-line.
+      APPEND t_html.
+
+      CLEAR lv_string.
+      lv_string = gw_bunker_lvl-cur_mill_ld.
+      CONDENSE lv_string NO-GAPS.
+      CONCATENATE '<td style="background-color:#ADD8E6">' lv_string '</td>' INTO t_html-line.
+      APPEND t_html.
+
+      CLEAR lv_string.
+*      lv_string = gw_bunker_lvl-no_of_millsin.
+      CLEAR lv_cnt1.
+      it_auxdata_d =  it_auxdata.
+      DELETE it_auxdata_d WHERE NOT ( plant = gw_bunker_lvl-werks AND
+                                      unit = gw_bunker_lvl-unit_no ).
+      IF sy-subrc EQ 0.
+        lv_cnt1 = lines( it_auxdata_d ).
+        lv_string = lv_cnt1.
+      ENDIF.
+      CONDENSE lv_string NO-GAPS.
+      CONCATENATE '<td>' lv_string '</td>' INTO t_html-line.
+      APPEND t_html.
+
+      CLEAR lv_string.
+      lv_string = gw_bunker_lvl-bunk_nos.
+      CONDENSE lv_string NO-GAPS.
+      CONCATENATE '<td style="background-color:RGBA(152,195,119,0.6)">' lv_string '</td>' INTO t_html-line.
+      APPEND t_html.
+
+      CLEAR lv_string.
+      lv_string = gw_bunker_lvl-bunk_cp.
+      CONDENSE lv_string NO-GAPS.
+      CONCATENATE '<td style="background-color:RGBA(152,195,119,0.6)">' lv_string '</td>' INTO t_html-line.
+      APPEND t_html.
+
+      CLEAR wa_value.
+      READ TABLE it_value INTO wa_value
+                 WITH KEY werks = gw_bunker_lvl-werks
+                          unit = gw_bunker_lvl-unit_no
+                          param = 'BUN'.
+      IF sy-subrc EQ 0.
+        CONDENSE wa_value-value1 NO-GAPS.
+        CONCATENATE '<td>' wa_value-value1 '</td>' INTO t_html-line.
+        APPEND t_html.
+
+        CONDENSE wa_value-value2 NO-GAPS.
+        CONCATENATE '<td>' wa_value-value2 '</td>' INTO t_html-line.
+        APPEND t_html.
+
+        CONDENSE wa_value-value3 NO-GAPS.
+        CONCATENATE '<td>' wa_value-value3 '</td>' INTO t_html-line.
+        APPEND t_html.
+
+        CONDENSE wa_value-value4 NO-GAPS.
+        CONCATENATE '<td>' wa_value-value4 '</td>' INTO t_html-line.
+        APPEND t_html.
+
+        CONDENSE wa_value-value5 NO-GAPS.
+        CONCATENATE '<td>' wa_value-value5 '</td>' INTO t_html-line.
+        APPEND t_html.
+
+        CONDENSE wa_value-value6 NO-GAPS.
+        CONCATENATE '<td>' wa_value-value6 '</td>' INTO t_html-line.
+        APPEND t_html.
+
+        CONDENSE wa_value-value7 NO-GAPS.
+        CONCATENATE '<td>' wa_value-value7 '</td>' INTO t_html-line.
+        APPEND t_html.
+
+        CONDENSE wa_value-value8 NO-GAPS.
+        CONCATENATE '<td>' wa_value-value8 '</td>' INTO t_html-line.
+        APPEND t_html.
+
+        CONDENSE wa_value-value9 NO-GAPS.
+        CONCATENATE '<td>' wa_value-value9 '</td>' INTO t_html-line.
+        APPEND t_html.
+
+        CONDENSE wa_value-value10 NO-GAPS.
+        CONCATENATE '<td>' wa_value-value10 '</td>' INTO t_html-line.
+        APPEND t_html.
+      ELSE.
+        CLEAR wa_value.
+        CONDENSE wa_value-value1 NO-GAPS.
+        CONCATENATE '<td>' wa_value-value1 '</td>' INTO t_html-line.
+        APPEND t_html.
+
+        CONDENSE wa_value-value2 NO-GAPS.
+        CONCATENATE '<td>' wa_value-value2 '</td>' INTO t_html-line.
+        APPEND t_html.
+
+        CONDENSE wa_value-value3 NO-GAPS.
+        CONCATENATE '<td>' wa_value-value3 '</td>' INTO t_html-line.
+        APPEND t_html.
+
+        CONDENSE wa_value-value4 NO-GAPS.
+        CONCATENATE '<td>' wa_value-value4 '</td>' INTO t_html-line.
+        APPEND t_html.
+
+        CONDENSE wa_value-value5 NO-GAPS.
+        CONCATENATE '<td>' wa_value-value5 '</td>' INTO t_html-line.
+        APPEND t_html.
+
+        CONDENSE wa_value-value6 NO-GAPS.
+        CONCATENATE '<td>' wa_value-value6 '</td>' INTO t_html-line.
+        APPEND t_html.
+
+        CONDENSE wa_value-value7 NO-GAPS.
+        CONCATENATE '<td>' wa_value-value7 '</td>' INTO t_html-line.
+        APPEND t_html.
+
+        CONDENSE wa_value-value8 NO-GAPS.
+        CONCATENATE '<td>' wa_value-value8 '</td>' INTO t_html-line.
+        APPEND t_html.
+
+        CONDENSE wa_value-value9 NO-GAPS.
+        CONCATENATE '<td>' wa_value-value9 '</td>' INTO t_html-line.
+        APPEND t_html.
+
+        CONDENSE wa_value-value10 NO-GAPS.
+        CONCATENATE '<td>' wa_value-value10 '</td>' INTO t_html-line.
+        APPEND t_html.
+      ENDIF.
+
+      t_html-line = '</tr>' .
+      APPEND t_html.
+      lv_cnt = lv_cnt + 1.
+*      ENDIF.
+    ENDLOOP.
+  ENDLOOP.
+  t_html-line = '</tbody>' .
+  APPEND t_html.
+
+  t_html-line = '</table>' .
+  APPEND t_html.
+
+  t_html-line = '<script>' .
+  APPEND t_html.
+
+  CONCATENATE 'var t = document.getElementById(' '''sale''' ');'
+  INTO t_html-line.
+  CONDENSE t_html-line.
+  APPEND t_html.
+  " Looping the each row and fiding the cell
+  CONCATENATE 'if(t) {'
+              'Array.from(t.rows).forEach((tr, rowIdx) => {'
+              'Array.from(tr.cells).forEach((cell, cellIdx) => {'
+              INTO t_html-line.
+  APPEND t_html.
+
+  CONCATENATE 'if (cellIdx == 10 || cellIdx == 11 || cellIdx == 12 || cellIdx == 13 || cellIdx == 14 || cellIdx == 15 ||'
+            'cellIdx == 16 || cellIdx == 17 || cellIdx == 18 || cellIdx == 19 )'
+            '{' INTO t_html-line.
+  APPEND t_html.
+
+*  for blank data
+  CONCATENATE 'if (cell.innerText == '''') {'
+            'cell.style.backgroundColor = '''';'
+            INTO t_html-line.
+  APPEND t_html.
+
+
+
+*  for red green yello based on conditions
+  CONCATENATE '}else if (cell.innerText >=1 && cell.innerText <=30) {'  " red
+            'cell.style.backgroundColor =' '''RGBA(255,0,0,1)''' ';'
+          '}else if (cell.innerText > 30 && cell.innerText <=50) {'
+            'cell.style.backgroundColor = ' '''RGBA(255,255,0,1)''' ';}' " yellow
+  INTO t_html-line.
+  APPEND t_html.
+  CONCATENATE 'else if (cell.innerText > 50 ) {'
+             'cell.style.backgroundColor = ' '''RGBA(10,138,10,1)''' ';' " green
+           '}' INTO t_html-line.
+  APPEND t_html.
+
+
+  CONCATENATE '}' '});' '});' '}' INTO t_html-line..
+  APPEND t_html.
+
+  t_html-line = '</script>' .
+  APPEND t_html.
+
+  t_html-line = '</body>' .
+  APPEND t_html.
+
+  t_html-line = '</html>' .
+  APPEND t_html.
+
+  PERFORM display_file.
+
+
+*ENDIF.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  F4_HELP_FILE
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM f4_help_file .
+  DATA:
+    gv_path_ini TYPE string,
+    gv_path_sel TYPE string.
+  DATA : lv_filename TYPE string,
+         lv_path     TYPE string,
+         lv_fullpath TYPE string.
+
+
+
+  CALL METHOD cl_gui_frontend_services=>file_save_dialog
+    EXPORTING
+*     window_title              =
+*     default_extension         =
+*     default_file_name         =
+*     with_encoding             =
+      file_filter               = cl_gui_frontend_services=>filetype_html
+*     initial_directory         =
+*     prompt_on_overwrite       = 'X'
+    CHANGING
+      filename                  = lv_filename
+      path                      = lv_path
+      fullpath                  = lv_fullpath
+*     user_action               =
+*     file_encoding             =
+    EXCEPTIONS
+      cntl_error                = 1
+      error_no_gui              = 2
+      not_supported_by_gui      = 3
+      invalid_default_file_name = 4
+      OTHERS                    = 5.
+  IF sy-subrc <> 0.
+    MESSAGE ID sy-msgid
+            TYPE sy-msgty
+            NUMBER sy-msgno
+            WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+*   Implement suitable error handling here
+  ELSE.
+    p_file = lv_fullpath.
+  ENDIF.
+
+
+*  CALL METHOD cl_gui_frontend_services=>directory_browse
+*    EXPORTING
+*      initial_folder  = gv_path_ini
+*    CHANGING
+*      selected_folder = gv_path_sel
+*    EXCEPTIONS
+*      cntl_error      = 1
+*      error_no_gui    = 2
+*      OTHERS          = 3.
+*  IF sy-subrc = 0.
+*    CALL METHOD cl_gui_cfw=>flush( ).
+*    IF NOT gv_path_sel IS INITIAL.
+*      gv_path_ini = p_file = gv_path_sel.
+*    ENDIF.
+*  ENDIF.
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  DISPLAY_FILE
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM display_file .
+  CONCATENATE 'C:\\PTS\ZBLR' sy-datum sy-uzeit '.html'
+  INTO gv_file.
+*  gv_file = p_file.
+  IF NOT t_html IS INITIAL AND
+     NOT gv_file IS INITIAL.
+
+    CALL FUNCTION 'GUI_DOWNLOAD'
+      EXPORTING
+        filename                = gv_file     "'\\Mac\Home\Desktop\untitled folder'   "'C:\Flights.htm'
+      TABLES
+        data_tab                = t_html[]
+      EXCEPTIONS
+        file_write_error        = 1
+        no_batch                = 2
+        gui_refuse_filetransfer = 3
+        invalid_type            = 4
+        no_authority            = 5
+        unknown_error           = 6
+        header_not_allowed      = 7
+        separator_not_allowed   = 8
+        filesize_not_allowed    = 9
+        header_too_long         = 10
+        dp_error_create         = 11
+        dp_error_send           = 12
+        dp_error_write          = 13
+        unknown_dp_error        = 14
+        access_denied           = 15
+        dp_out_of_memory        = 16
+        disk_full               = 17
+        dp_timeout              = 18
+        file_not_found          = 19
+        dataprovider_exception  = 20
+        control_flush_error     = 21
+        OTHERS                  = 22.
+
+    IF sy-subrc <> 0.
+      MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+      WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+    ENDIF.
+
+    CALL METHOD cl_gui_frontend_services=>execute
+      EXPORTING
+        document               = gv_file       "'C:\Flights.htm'
+        operation              = 'OPEN'
+      EXCEPTIONS
+        cntl_error             = 1
+        error_no_gui           = 2
+        bad_parameter          = 3
+        file_not_found         = 4
+        path_not_found         = 5
+        file_extension_unknown = 6
+        error_execute_failed   = 7
+        synchronous_failed     = 8
+        not_supported_by_gui   = 9
+        OTHERS                 = 10.
+
+    IF sy-subrc <> 0.
+      MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+      WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+    ENDIF.
+  ENDIF.
+ENDFORM.
