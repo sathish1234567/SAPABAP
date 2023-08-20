@@ -1,0 +1,27 @@
+REPORT z_round.
+*    lv_wrbtr = round( val = amt1 dec = 2 mode = cl_abap_math=>round_down ).
+DATA : amt1 TYPE bapiaccr09-amt_doccur.
+DATA int TYPE int4.
+amt1 = '296359.4999'.
+int = amt1.
+
+write :/ int, amt1.
+
+amt1 = amt1 - int .
+write :/  amt1 .
+write :/ '***************************'.
+data: var type p decimals 2 value '87.45',
+
+into type i,
+
+dec type p decimals 2. " decimals same as source decimals
+
+into = trunc( var ).
+
+dec = frac( var ).
+
+write :/ into, dec.
+
+dec = dec * 100. " multiply as number of decimals, 2 dec so with 100
+
+write: / into, dec.
