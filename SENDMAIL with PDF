@@ -131,3 +131,205 @@ FUNCTION ZFM_SEND_EMAIL.
 
 
 ENDFUNCTION.
+
+FORM smartform .
+
+  REFRESH it_final1 .
+  MOVE-CORRESPONDING it_final TO it_final1.
+  lv_control-preview   = 'X'.       "Preview the output of Smartform
+  lv_control-no_dialog = 'X'.       "Don't show Dialog
+  lv_output-tddest     = 'LP01'.    "Spool: Output device            P.R
+  lv_output-tdnoprint  = ' '.       "No printing from print preview  P.R
+  CLEAR: lv_user_set.
+  lv_control-getotf = 'X'.
+  lv_user_set       = 'X'.                                           " P.R
+  CLEAR: it_otf.
+  CALL FUNCTION 'SSF_FUNCTION_MODULE_NAME'
+    EXPORTING
+      formname           = lv_form
+    IMPORTING
+      fm_name            = lv_name
+    EXCEPTIONS
+      no_form            = 1
+      no_function_module = 2
+      OTHERS             = 3.
+  IF sy-subrc <> 0.
+* Implement suitable error handling here
+  ENDIF.
+
+  CALL FUNCTION lv_name
+    EXPORTING
+      control_parameters = lv_control
+      output_options     = lv_output
+      user_settings      = lv_user_set
+      it_final           = it_final1
+      frt_status         = 'P'
+    IMPORTING
+      job_output_info    = wa_return
+    EXCEPTIONS
+      formatting_error   = 1
+      internal_error     = 2
+      send_error         = 3
+      user_canceled      = 4
+      OTHERS             = 5.
+  IF sy-subrc <> 0.
+* Implement suitable error handling here
+  ENDIF.
+  it_otf[] = wa_return-otfdata[].
+  CALL FUNCTION 'CONVERT_OTF'
+    EXPORTING
+      format                = 'PDF'
+    IMPORTING
+      bin_file              = it_xstring1
+      bin_filesize          = v_len_in
+    TABLES
+      otf                   = it_otf
+      lines                 = i_tline
+    EXCEPTIONS
+      err_max_linewidth     = 1
+      err_format            = 2
+      err_conv_not_possible = 3
+      err_bad_otf           = 4
+      OTHERS                = 5.
+  IF sy-subrc <> 0.
+* Implement suitable error handling here
+  ENDIF.
+
+
+ENDFORM .
+
+"----------------------------------------------------------------
+
+FORM submit_mail .
+
+  DATA: i_reclist   LIKE somlreci1 OCCURS 0 WITH HEADER LINE,
+        it_reclist1 TYPE somlreci1_t,
+        wa_reclist1 TYPE somlreci1,
+        it_body1    TYPE bcsy_text,
+        wa_body1    TYPE soli,
+        lv_subject1 TYPE so_obj_des,
+        lv_file_nm1 TYPE so_obj_des.
+  DATA : it_param TYPE TABLE OF zsd_pri .
+  wa_body1-line = 'Sir ,'.
+  APPEND wa_body1 TO it_body1 .
+  CLEAR : wa_body1 .
+  wa_body1-line = ' '.
+  APPEND wa_body1 TO it_body1 .
+  CLEAR : wa_body1 .
+  SHIFT track_id LEFT DELETING LEADING '0' .
+  CONCATENATE 'Please approve the Price request with track ID:' track_id INTO DATA(line) .
+  wa_body1-line = line .
+  APPEND wa_body1 TO it_body1 .
+  CLEAR : wa_body1 .
+  wa_body1-line = ' '.
+  APPEND wa_body1 TO it_body1 .
+  CLEAR : wa_body1  .
+
+  wa_body1-line =
+ 'Approve using transaction code "ZSD_PRICE" . ' .
+  APPEND wa_body1 TO it_body1 .
+  CLEAR : wa_body1 .
+  wa_body1-line = ' '.
+  APPEND wa_body1 TO it_body1 .
+  CLEAR : wa_body1 .
+
+  wa_body1-line =
+   'Regards,' .
+  APPEND wa_body1 TO it_body1 .
+  CLEAR : wa_body1 .
+  wa_body1-line = ' '.
+  APPEND wa_body1 TO it_body1 .
+  CLEAR : wa_body1 .
+
+  SHIFT track_id LEFT DELETING LEADING '0' .
+  CONCATENATE 'Price Approval with Track ID : ' track_id  INTO
+   lv_file_nm1.
+  SELECT * FROM zsd_pri INTO TABLE it_param
+                          WHERE id1 = 'ZSD_PRICING'  .
+
+  LOOP AT it_param INTO DATA(wa_param) .
+    CLEAR : wa_reclist1.
+    IF wa_param-id2 = 'TO' .
+      wa_reclist1-receiver = wa_param-value1.
+      wa_reclist1-rec_type = 'U' .
+      APPEND wa_reclist1 TO it_reclist1  .
+      CLEAR : wa_reclist1.
+      wa_reclist1-receiver = wa_param-value2.
+      wa_reclist1-rec_type = 'U' .
+      APPEND wa_reclist1 TO it_reclist1 .
+      CLEAR : wa_reclist1.
+      wa_reclist1-receiver = wa_param-value3.
+      wa_reclist1-rec_type = 'U' .
+      APPEND wa_reclist1 TO it_reclist1  .
+      CLEAR : wa_reclist1.
+      wa_reclist1-receiver = wa_param-value4.
+      wa_reclist1-rec_type = 'U' .
+      APPEND wa_reclist1 TO it_reclist1  .
+      CLEAR : wa_reclist1.
+      wa_reclist1-receiver = wa_param-value5.
+      wa_reclist1-rec_type = 'U' .
+      APPEND wa_reclist1 TO it_reclist1  .
+      CLEAR : wa_reclist1.
+    ELSEIF wa_param-id2 = 'CC' .
+      wa_reclist1-copy = 'X' .
+      wa_reclist1-receiver = wa_param-value1.
+      wa_reclist1-rec_type = 'U' .
+      APPEND wa_reclist1 TO it_reclist1 .
+      CLEAR : wa_reclist1.
+      wa_reclist1-copy = 'X' .
+      wa_reclist1-receiver = wa_param-value2.
+      wa_reclist1-rec_type = 'U' .
+      APPEND wa_reclist1 TO it_reclist1 .
+      CLEAR : wa_reclist1.
+      wa_reclist1-copy = 'X' .
+      wa_reclist1-receiver = wa_param-value3.
+      wa_reclist1-rec_type = 'U' .
+      APPEND wa_reclist1 TO it_reclist1 .
+      CLEAR : wa_reclist1.
+      wa_reclist1-copy = 'X' .
+      wa_reclist1-receiver = wa_param-value4.
+      wa_reclist1-rec_type = 'U' .
+      APPEND wa_reclist1 TO it_reclist1 .
+      CLEAR : wa_reclist1.
+      wa_reclist1-copy = 'X' .
+      wa_reclist1-receiver = wa_param-value5.
+      wa_reclist1-rec_type = 'U' .
+      APPEND wa_reclist1 TO it_reclist1 .
+      CLEAR : wa_reclist1.
+    ENDIF .
+  ENDLOOP .
+  SELECT SINGLE  * FROM usr21 INTO @DATA(wa_usr)
+    WHERE bname = @sy-uname .
+  IF wa_usr IS NOT INITIAL .
+    SELECT SINGLE * FROM adr6 INTO @DATA(wa_adr6)
+      WHERE addrnumber = @wa_usr-addrnumber
+      AND persnumber = @wa_usr-persnumber .
+    wa_reclist1-copy = 'X' .
+    wa_reclist1-receiver = wa_adr6-smtp_addr.
+    wa_reclist1-rec_type = 'U' .
+    APPEND wa_reclist1 TO it_reclist1 .
+    CLEAR : wa_reclist1.
+  ENDIF .
+  DELETE it_reclist1 WHERE receiver IS INITIAL.
+  IF it_reclist1 IS NOT INITIAL .
+    CALL FUNCTION 'ZFM_SEND_EMAIL'
+      EXPORTING
+        im_reclist       = it_reclist1[]
+        im_body_content  = it_body1[]
+        im_subject       = lv_file_nm1
+        im_xstring       = it_xstring1
+        im_attch_name    = lv_file_nm1
+        im_body_type     = 'RAW'
+        im_attach_typ    = 'PDF'
+      EXCEPTIONS
+        l_send_exception = 1
+        OTHERS           = 2.
+    IF sy-subrc <> 0.
+    ELSE .
+      CONCATENATE 'Mail sent Successfully For Approval with Track Id' track_id INTO DATA(msg) SEPARATED BY space  .
+      MESSAGE msg TYPE 'S' .
+    ENDIF.
+  ENDIF .
+
+ENDFORM .
+
