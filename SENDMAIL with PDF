@@ -333,3 +333,83 @@ FORM submit_mail .
 
 ENDFORM .
 
+FORM pricing USING p_selfield TYPE slis_selfield.
+  DATA : num        TYPE c LENGTH 12,
+         allow_flag TYPE i VALUE 1,
+         count      TYPE i VALUE 0.
+  p_selfield-refresh = 'X'.
+  it_disp = it_final .
+  DELETE it_disp WHERE sel <> 'X'.
+  SORT it_final BY kunnr .
+  READ TABLE it_final INTO wa_final WITH KEY sel = 'X' .
+  IF sy-subrc = 0 .
+    LOOP AT it_final INTO wa_final WHERE sel = 'X'.
+      IF wa_final-kbetr1 IS INITIAL .
+        allow_flag = 0 .
+      ENDIF .
+    ENDLOOP .
+    IF allow_flag = 1 .
+      count = 0 .
+      CLEAR : wa_frt_pricing , wa_final .
+
+      LOOP AT it_final INTO wa_final WHERE sel = 'X' .
+        IF wa_final-kbetr1 < wa_final-mxwrt.
+          MESSAGE  'Proposed Price is less than Lower Limit.' TYPE 'E'.
+        ELSEIF  wa_final-kbetr1 > wa_final-gkwrt.
+          MESSAGE  'Proposed Price is greater than Higher Limit.' TYPE 'E'.
+        ELSEIF wa_final-kbetr1 > wa_final-mxwrt AND wa_final-kbetr1 < wa_final-gkwrt.
+          count = count + 1 .
+          IF wa_final-datab IS INITIAL .
+            wa_final-datab = sy-datum .
+            MODIFY TABLE it_final FROM wa_final TRANSPORTING datab .
+          ENDIF .
+          IF count = 1 .
+            CALL FUNCTION 'NUMBER_GET_NEXT'
+              EXPORTING
+                nr_range_nr             = '01'
+                object                  = 'ZPRI'
+                quantity                = '00000000000000000001'
+              IMPORTING
+                number                  = num
+              EXCEPTIONS
+                interval_not_found      = 1
+                number_range_not_intern = 2
+                object_not_found        = 3
+                quantity_is_0           = 4
+                quantity_is_not_1       = 5
+                interval_overflow       = 6
+                buffer_overflow         = 7
+                OTHERS                  = 8.
+            IF sy-subrc <> 0.
+            ENDIF .
+          ENDIF .
+          MOVE-CORRESPONDING wa_final TO wa_frt_pricing .
+          wa_frt_pricing-datab1 = wa_final-datab .
+          wa_frt_pricing-track_id = num .
+          track_id = num .
+          wa_frt_pricing-status = 'B'.
+          wa_frt_pricing-uname = sy-uname .
+          wa_frt_pricing-uzeit = sy-uzeit .
+          wa_frt_pricing-datum = sy-datum .
+          wa_frt_pricing-kschl = 'ZPR0'.
+          MODIFY zsd_pricing FROM wa_frt_pricing .
+          COMMIT WORK.
+          WAIT UP TO 1 SECONDS.
+        ENDIF .
+        CLEAR wa_final.
+      ENDLOOP .
+      PERFORM smartform.
+      PERFORM submit_mail .
+      DELETE it_final WHERE sel = 'X' .
+      p_selfield-refresh = 'X'.
+    ELSEIF allow_flag = 0 .
+      MESSAGE 'Please Enter Value Of Pricing Amount' TYPE 'I' .
+    ELSEIF allow_flag = 2 .
+      MESSAGE 'Date should Be Greater Than Todays Date ' TYPE 'I' .
+    ENDIF .
+  ELSE .
+    MESSAGE ' Please Select Atleast One Record !' TYPE 'I' DISPLAY LIKE 'E' .
+  ENDIF .
+
+ENDFORM .
+
