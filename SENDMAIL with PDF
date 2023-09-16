@@ -1,0 +1,133 @@
+FUNCTION ZFM_SEND_EMAIL.
+*"----------------------------------------------------------------------
+*"*"Local Interface:
+*"  IMPORTING
+*"     REFERENCE(IM_RECLIST) TYPE  SOMLRECI1_T OPTIONAL
+*"     REFERENCE(IM_BODY_CONTENT) TYPE  BCSY_TEXT OPTIONAL
+*"     REFERENCE(IM_SUBJECT) TYPE  SO_OBJ_DES OPTIONAL
+*"     REFERENCE(IM_XSTRING) TYPE  XSTRING OPTIONAL
+*"     REFERENCE(IM_STRING) TYPE  STRING OPTIONAL
+*"     REFERENCE(IM_ATTCH_NAME) TYPE  SO_OBJ_DES OPTIONAL
+*"     REFERENCE(IM_SEND_ID) TYPE  AD_SMTPADR OPTIONAL
+*"     REFERENCE(IM_BODY_TYPE) TYPE  SO_OBJ_TP DEFAULT 'RAW'
+*"     REFERENCE(IM_ATTACH_TYP) TYPE  SO_OBJ_TP DEFAULT 'PDF'
+*"  EXPORTING
+*"     REFERENCE(E_MESSAGE) TYPE  STRING
+*"  EXCEPTIONS
+*"      L_SEND_EXCEPTION
+*"----------------------------------------------------------------------
+
+ DATA : ls_reclist         TYPE somlreci1,
+         lv_email           TYPE ad_smtpadr,
+         send_request       TYPE REF TO cl_bcs,
+         document           TYPE REF TO cl_document_bcs,
+         gr_sender          TYPE REF TO if_sender_bcs,
+         gv_sent_to_all     TYPE os_boolean,
+         lo_send            TYPE ad_smtpadr ,
+         gr_recipient       TYPE REF TO if_recipient_bcs,
+         lt_att_content_hex TYPE solix_tab,
+         ls_att_content_hex TYPE solix,
+         ls_lines           TYPE tline,
+         attachment         TYPE REF TO if_document_bcs,
+         lp_pdf_size        TYPE so_obj_len,
+         lv_dl_name         TYPE  so_obj_nam,
+         lv_obj_type        TYPE soodk-objtp,
+         l_send_exception   TYPE REF TO    cx_send_req_bcs,
+         l_message          TYPE string,
+         lv_size            TYPE so_obj_len.
+
+  IF im_xstring IS NOT INITIAL.
+    lt_att_content_hex = cl_document_bcs=>xstring_to_solix( ip_xstring = im_xstring ).
+  ELSEIF im_string IS   NOT INITIAL.
+    TRY.
+        cl_bcs_convert=>string_to_solix(
+        EXPORTING
+        iv_string = im_string
+        iv_codepage = '4103'
+        iv_add_bom = 'X'
+        IMPORTING
+        et_solix = lt_att_content_hex
+        ev_size =  lv_size ).
+      CATCH cx_bcs.
+        MESSAGE e445(so).
+    ENDTRY.
+  ENDIF.
+
+  TRY.
+      send_request = cl_bcs=>create_persistent( ).
+    CATCH cx_send_req_bcs INTO l_send_exception.
+  ENDTRY.
+
+  document = cl_document_bcs=>create_document(
+    i_type    = im_body_type
+    i_text    = im_body_content
+    i_subject =  im_subject ).
+
+  IF lt_att_content_hex IS NOT INITIAL.
+    TRY.
+        attachment = cl_document_bcs=>create_document( i_type    = im_attach_typ
+                                                       i_hex     = lt_att_content_hex
+                                                       i_length  = lp_pdf_size
+                                                       i_subject = im_attch_name ).
+      CATCH cx_document_bcs .
+    ENDTRY.
+
+    TRY.
+        lv_obj_type = im_attach_typ.
+        document->add_attachment(
+          EXPORTING
+            i_attachment_type = lv_obj_type
+            i_attachment_subject = im_attch_name
+            i_att_content_hex = lt_att_content_hex ).
+
+      CATCH cx_document_bcs.
+    ENDTRY.
+  ENDIF.
+  send_request->set_document( document ).
+  IF im_send_id IS NOT INITIAL.
+    lo_send = im_send_id.
+    gr_sender =  cl_cam_address_bcs=>create_internet_address( lo_send ).
+    send_request->set_sender( gr_sender ).
+  ENDIF.
+  TRY.
+      LOOP AT im_reclist INTO ls_reclist WHERE receiver IS NOT INITIAL.
+        IF ls_reclist-rec_type = 'U'.
+          lv_email = ls_reclist-receiver.
+          gr_recipient = cl_cam_address_bcs=>create_internet_address( lv_email ).
+
+        ELSEIF ls_reclist-rec_type = 'C'.
+          lv_dl_name = ls_reclist-receiver.
+          gr_recipient = cl_distributionlist_bcs=>getu_persistent(
+          i_dliname = lv_dl_name
+          i_private = space ).
+        ENDIF.
+        IF ls_reclist-copy = 'X'.
+          CALL METHOD send_request->add_recipient
+            EXPORTING
+              i_recipient = gr_recipient
+              i_copy      = 'X'.
+        ELSE.
+          CALL METHOD send_request->add_recipient
+            EXPORTING
+              i_recipient = gr_recipient
+              i_express   = 'X'.
+        ENDIF.
+      ENDLOOP.
+
+      CALL METHOD send_request->send(
+        EXPORTING
+          i_with_error_screen = 'X'
+        RECEIVING
+          result              = gv_sent_to_all ).
+      COMMIT WORK.
+    CATCH cx_send_req_bcs INTO l_send_exception.
+      IF l_send_exception IS BOUND.
+        CALL METHOD l_send_exception->if_message~get_text
+          RECEIVING
+            result = l_message.
+        e_message = l_message.
+      ENDIF.
+  ENDTRY.
+
+
+ENDFUNCTION.
