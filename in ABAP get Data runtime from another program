@@ -1,0 +1,758 @@
+*&---------------------------------------------------------------------* 
+*& Report  ZINV_MGMNT 
+*& 
+*&---------------------------------------------------------------------* 
+*&Inventory Management Report 
+*& 
+*&---------------------------------------------------------------------* 
+REPORT ZMSL. 
+*** Selection screen design & Data Declaration. 
+INCLUDE ZINV_MGMNT_TOP_SS. 
+*** All Sub-Routines. 
+INCLUDE ZINV_MGMNT_SR. 
+*** Selection screen changes. 
+AT SELECTION-SCREEN OUTPUT. 
+  PERFORM SS_CHANGES. 
+*** Selection Screen F4 Help for file path. 
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR P_PATH. 
+  PERFORM F4_FILEPATH. 
+*** Screen field validations. 
+AT SELECTION-SCREEN . 
+  PERFORM SCREEN_VALIDATION. 
+*** Get the Data. 
+START-OF-SELECTION. 
+  IF R1 = 'X' . 
+    PERFORM GET_DATA. 
+  ELSEIF R2 = 'X'. 
+    PERFORM LEADTIME_UPLOAD. 
+  ENDIF. 
+ 
+END-OF-SELECTION. 
+*** ALV Display. 
+  IF GT_FINAL IS NOT INITIAL. 
+    PERFORM ALV_DISPLAY. 
+  ENDIF. 
+----------------------------------------------------------------------------------------------------------- 
+----------------------------------------------------------------------------------------------------------- 
+*&---------------------------------------------------------------------* 
+*&  Include           ZINV_MGMNT_TOP_SS 
+*&---------------------------------------------------------------------* 
+DATA: LV_MATNR TYPE MATNR, 
+      LV_MTART TYPE MTART, 
+      LV_WERKS TYPE WERKS_D. 
+TYPES: BEGIN OF TY_FINAL, 
+         MATNR     TYPE MATNR, 
+         MAKTX     TYPE MAKTX, 
+         MTART     TYPE MTART, 
+         WERKS     TYPE WERKS_D, 
+         INSME     TYPE INSME, 
+         LABST     TYPE LABST, 
+         UMLME     TYPE UMLME, 
+         MENGE_3   TYPE MENGE_D, 
+         MENGE_12  TYPE MENGE_D, 
+         MENGE_SA  TYPE MENGE_D, 
+         LT(3)     TYPE N,       "Lead Time 
+         LT_D      TYPE MENGE_D, "Lead Time Demand 
+         LT_S      TYPE MENGE_D, "Safety Stock 
+         MEINS_OSQ TYPE MENGE_D, "Open Sales order Qty 
+         MEINS_ROL TYPE MENGE_D, "Re-order Level 
+         MEINS_ROQ TYPE MENGE_D, "Re-order Qty 
+         MEINS_OPQ TYPE MENGE_D, "Open PO-Qty 
+         MEINS_OPR TYPE MENGE_D, "Open PR-Qty 
+         MEINS_ORR TYPE MENGE_D, "Open PR to be raised 
+         MEINS_PH  TYPE MENGE_D, "Ph Stock Below Reorder Level 
+         TCOLOR    TYPE LVC_T_SCOL, "SLIS_T_SPECIALCOL_ALV, 
+       END OF TY_FINAL. 
+DATA: GT_FINAL TYPE STANDARD TABLE OF TY_FINAL INITIAL SIZE 1, 
+      XCOLOR   TYPE LVC_S_SCOL. "SLIS_SPECIALCOL_ALV. 
+*** Selection Screen Design. 
+SELECTION-SCREEN BEGIN OF BLOCK B1 WITH FRAME TITLE TEXT-T01. 
+SELECT-OPTIONS: S_MATNR FOR LV_MATNR, 
+                S_WERKS FOR LV_WERKS NO INTERVALS OBLIGATORY, 
+                S_MTART FOR LV_MTART  NO INTERVALS OBLIGATORY . 
+SELECTION-SCREEN END OF BLOCK B1. 
+SELECTION-SCREEN BEGIN OF BLOCK B2 WITH FRAME TITLE TEXT-T02. 
+PARAMETERS: R1     RADIOBUTTON GROUP RAD1 DEFAULT 'X' USER-COMMAND RB, 
+            R2     RADIOBUTTON GROUP RAD1, 
+            P_PATH TYPE STRING. 
+SELECTION-SCREEN END OF BLOCK B2. 
+----------------------------------------------------------------------------------------------------------- 
+----------------------------------------------------------------------------------------------------------- 
+*&---------------------------------------------------------------------* 
+*&  Include           ZINV_MGMNT_SR 
+*&---------------------------------------------------------------------* 
+*&---------------------------------------------------------------------* 
+*&      Form  GET_DATA 
+*&---------------------------------------------------------------------* 
+*       Get the data 
+*----------------------------------------------------------------------* 
+FORM GET_DATA . 
+*** Local Data Declaration. 
+  TYPES: BEGIN OF TY_STND_MB52, 
+           MATNR TYPE MATNR,    "Material 
+           WERKS TYPE WERKS_D,  "Plant 
+           LGORT TYPE LGORT_D,  "Storage Location. 
+           UMLME TYPE UMLME,    "Transist Transfer 
+           LABST TYPE LABST,    "Stock-In transist 
+           INSME TYPE INSME,    "Stock in Quality Inspection 
+         END OF TY_STND_MB52, 
+         BEGIN OF TY_STND_MB51, 
+           MATNR TYPE MATNR,    "Material 
+           BWART TYPE BWART,    "Movement Type 
+           BUDAT TYPE BUDAT,    "Posting Date 
+           WERKS TYPE WERKS_D,  "Plant 
+           LGORT TYPE LGORT_D,  "Storage Location. 
+           MENGE TYPE MENGE_D,  "Qty 
+         END OF TY_STND_MB51, 
+         BEGIN OF TY_ZSD_OSR, 
+           BAL_QTY TYPE KWMENG,  "Balance Qty, 
+           ABGRU   TYPE BEZEI40, "Reason for rejection 
+           MATNR   TYPE MATNR, 
+           WERKS   TYPE WERKS_D, 
+         END OF TY_ZSD_OSR. 
+  DATA: LV_LAST3M    TYPE SY-DATUM, 
+        LV_LAST12M   TYPE SY-DATUM, 
+        LV_MATNR     TYPE MATNR, 
+        LV_WERKS     TYPE WERKS_D, 
+        LS_FINAL     TYPE TY_FINAL, 
+        LS_STND_MB52 TYPE TY_STND_MB52, 
+        LS_STND_MB51 TYPE TY_STND_MB51, 
+        LS_ZSD_OSR   TYPE TY_ZSD_OSR, 
+        LT_STND_MB52 TYPE STANDARD TABLE OF TY_STND_MB52 INITIAL SIZE 1, 
+        LT_STND_MB51 TYPE STANDARD TABLE OF TY_STND_MB51 INITIAL SIZE 1, 
+        LT_ZSD_OSR   TYPE STANDARD TABLE OF TY_ZSD_OSR INITIAL SIZE 1. 
+  DATA:LS_MB         TYPE REF TO DATA, 
+       LIT_LINE      TYPE REF TO DATA, 
+       LV_LAST30DAY  TYPE SY-DATUM, 
+       LV_LAST365DAY TYPE SY-DATUM. 
+*DATA: LT_RATE TYPE RANGE OF 
+  RANGES: RT_DATE  FOR SY-DATUM. 
+  RANGES: RT_VKORG FOR VBAK-VKORG. 
+  RANGES: RT_SPART FOR VBAK-SPART. 
+  RANGES: RT_AUART FOR VBAK-AUART. 
+  FIELD-SYMBOLS:<LT_MB>     TYPE ANY TABLE, 
+                <LS_MB>     TYPE ANY, 
+*                <LS_MB51>   TYPE ANY, 
+*                <LS_MBZ>    TYPE ANY, 
+                <LS_CUSTOM> TYPE ANY. 
+*** Data Fetching. 
+  SELECT MATNR, 
+         MTART FROM MARA INTO TABLE @DATA(LT_MARA) 
+               WHERE MATNR IN @S_MATNR AND 
+                     MTART IN @S_MTART. 
+  IF LT_MARA IS NOT INITIAL. 
+    SELECT MATNR, 
+           SPRAS, 
+           MAKTX FROM MAKT INTO TABLE @DATA(LT_MAKT) FOR ALL ENTRIES IN 
+                 @LT_MARA WHERE MATNR = @LT_MARA-MATNR AND 
+                                SPRAS = @SY-LANGU. 
+    IF LT_MAKT IS NOT INITIAL . 
+      SELECT MATNR, 
+             WERKS FROM MARC INTO TABLE @DATA(LT_MARC) FOR ALL ENTRIES IN 
+                 @LT_MARA WHERE MATNR = @LT_MARA-MATNR AND 
+                                WERKS IN @S_WERKS. 
+      IF SY-SUBRC = 0. 
+        SORT LT_MARC BY MATNR WERKS. 
+      ENDIF. 
+    ENDIF. 
+** Settings - No ALV display, No metadata(Layout, Field Catalog) needed, ALV Data is needed 
+    CL_SALV_BS_RUNTIME_INFO=>SET( EXPORTING DISPLAY  = ABAP_FALSE 
+                                            METADATA = ABAP_FALSE 
+                                            DATA     = ABAP_TRUE ). 
+*** Data from MB52 
+    SUBMIT RM07MLBS USING SELECTION-SCREEN '1000' 
+           WITH MATNR  IN S_MATNR[] 
+           WITH WERKS  IN S_WERKS[] 
+           WITH MATART IN S_MTART[] AND RETURN. 
+    TRY. 
+        CL_SALV_BS_RUNTIME_INFO=>GET_DATA_REF( IMPORTING R_DATA = LS_MB ). 
+        IF LS_MB IS NOT INITIAL. 
+          ASSIGN LS_MB->* TO <LT_MB>. 
+        ENDIF. 
+      CATCH CX_SALV_BS_SC_RUNTIME_INFO. 
+        MESSAGE 'Unable to retrieve ALV data from MB52' TYPE 'E'. 
+    ENDTRY. 
+    IF <LT_MB> IS ASSIGNED. 
+      CREATE DATA LIT_LINE LIKE LINE OF <LT_MB>. 
+      ASSIGN LIT_LINE->* TO <LS_MB>. 
+      LOOP AT <LT_MB> INTO <LS_MB>. 
+        ASSIGN COMPONENT 'MATNR' OF STRUCTURE <LS_MB> TO <LS_CUSTOM>. 
+        IF <LS_CUSTOM> IS ASSIGNED. 
+          LS_STND_MB52-MATNR = <LS_CUSTOM>. 
+          CLEAR: <LS_CUSTOM>. 
+        ENDIF. 
+        ASSIGN COMPONENT 'WERKS' OF STRUCTURE <LS_MB> TO <LS_CUSTOM>. 
+        IF <LS_CUSTOM> IS ASSIGNED. 
+          LS_STND_MB52-WERKS = <LS_CUSTOM>. 
+          CLEAR: <LS_CUSTOM>. 
+        ENDIF. 
+        ASSIGN COMPONENT 'LGORT' OF STRUCTURE <LS_MB> TO <LS_CUSTOM>. 
+        IF <LS_CUSTOM> IS ASSIGNED. 
+          LS_STND_MB52-LGORT = <LS_CUSTOM>. 
+          CLEAR: <LS_CUSTOM>. 
+        ENDIF. 
+        ASSIGN COMPONENT 'UMLME' OF STRUCTURE <LS_MB> TO <LS_CUSTOM>. 
+        IF <LS_CUSTOM> IS ASSIGNED. 
+          LS_STND_MB52-UMLME = <LS_CUSTOM>. 
+          CLEAR: <LS_CUSTOM>. 
+        ENDIF. 
+        ASSIGN COMPONENT 'LABST' OF STRUCTURE <LS_MB> TO <LS_CUSTOM>. 
+        IF <LS_CUSTOM> IS ASSIGNED. 
+          LS_STND_MB52-LABST = <LS_CUSTOM>. 
+          CLEAR: <LS_CUSTOM>. 
+        ENDIF. 
+        ASSIGN COMPONENT 'INSME' OF STRUCTURE <LS_MB> TO <LS_CUSTOM>. 
+        IF <LS_CUSTOM> IS ASSIGNED. 
+          LS_STND_MB52-INSME = <LS_CUSTOM>. 
+          CLEAR: <LS_CUSTOM>. 
+        ENDIF. 
+        APPEND LS_STND_MB52 TO LT_STND_MB52. 
+        CLEAR: LS_STND_MB52. 
+      ENDLOOP. 
+    ENDIF. 
+    CL_SALV_BS_RUNTIME_INFO=>CLEAR_ALL( ). 
+*** Data from MB51. 
+ 
+    CALL FUNCTION 'CCM_GO_BACK_MONTHS' 
+      EXPORTING 
+        CURRDATE   = SY-DATUM 
+        BACKMONTHS = '12' 
+      IMPORTING 
+        NEWDATE    = LV_LAST365DAY. 
+    CALL FUNCTION 'CCM_GO_BACK_MONTHS' 
+      EXPORTING 
+        CURRDATE   = SY-DATUM 
+        BACKMONTHS = '3' 
+      IMPORTING 
+        NEWDATE    = LV_LAST30DAY. 
+    REFRESH:  RT_DATE[]. 
+    RT_DATE[]   = VALUE #( ( SIGN = 'I' OPTION = 'BT' LOW = LV_LAST365DAY HIGH = SY-DATUM ) ). 
+    CLEAR: LIT_LINE. 
+    IF <LS_CUSTOM> IS ASSIGNED. 
+      CLEAR: <LS_CUSTOM>. 
+      UNASSIGN: <LS_CUSTOM>. 
+    ENDIF. 
+    IF <LS_MB> IS ASSIGNED. 
+      CLEAR: LS_MB. 
+      UNASSIGN:<LS_MB>. 
+    ENDIF. 
+    IF <LT_MB> IS ASSIGNED. 
+      REFRESH: <LT_MB>. 
+      UNASSIGN :<LT_MB>. 
+    ENDIF. 
+** Settings - No ALV display, No metadata(Layout, Field Catalog) needed, ALV Data is needed 
+    CL_SALV_BS_RUNTIME_INFO=>SET( EXPORTING DISPLAY  = ABAP_FALSE 
+                                            METADATA = ABAP_FALSE 
+                                            DATA     = ABAP_TRUE ). 
+    SUBMIT RM07DOCS USING SELECTION-SCREEN '1000' 
+       WITH MATNR     IN S_MATNR[] 
+       WITH WERKS     IN S_WERKS[] 
+       WITH BUDAT     IN RT_DATE[] AND RETURN. 
+    TRY. 
+        CL_SALV_BS_RUNTIME_INFO=>GET_DATA_REF( IMPORTING R_DATA = LS_MB ). 
+        IF LS_MB IS NOT INITIAL. 
+          ASSIGN LS_MB->* TO <LT_MB>. 
+        ENDIF. 
+      CATCH CX_SALV_BS_SC_RUNTIME_INFO. 
+        MESSAGE 'Unable to retrieve ALV data from MB51' TYPE 'E'. 
+    ENDTRY. 
+    IF <LT_MB> IS ASSIGNED. 
+      CREATE DATA LIT_LINE LIKE LINE OF <LT_MB>. 
+      ASSIGN LIT_LINE->* TO <LS_MB>. 
+      LOOP AT <LT_MB> INTO <LS_MB>. 
+        ASSIGN COMPONENT 'MATNR' OF STRUCTURE <LS_MB> TO <LS_CUSTOM>. 
+        IF <LS_CUSTOM> IS ASSIGNED. 
+          LS_STND_MB51-MATNR = <LS_CUSTOM>. 
+          CLEAR: <LS_CUSTOM>. 
+        ENDIF. 
+        ASSIGN COMPONENT 'BUDAT' OF STRUCTURE <LS_MB> TO <LS_CUSTOM>. 
+        IF <LS_CUSTOM> IS ASSIGNED. 
+          LS_STND_MB51-BUDAT = <LS_CUSTOM>. 
+          CLEAR: <LS_CUSTOM>. 
+        ENDIF. 
+        ASSIGN COMPONENT 'WERKS' OF STRUCTURE <LS_MB> TO <LS_CUSTOM>. 
+        IF <LS_CUSTOM> IS ASSIGNED. 
+          LS_STND_MB51-WERKS = <LS_CUSTOM>. 
+          CLEAR: <LS_CUSTOM>. 
+        ENDIF. 
+        ASSIGN COMPONENT 'LGORT' OF STRUCTURE <LS_MB> TO <LS_CUSTOM>. 
+        IF <LS_CUSTOM> IS ASSIGNED. 
+          LS_STND_MB51-LGORT = <LS_CUSTOM>. 
+          CLEAR: <LS_CUSTOM>. 
+        ENDIF. 
+        ASSIGN COMPONENT 'BWART' OF STRUCTURE <LS_MB> TO <LS_CUSTOM>. 
+        IF <LS_CUSTOM> IS ASSIGNED. 
+          LS_STND_MB51-BWART = <LS_CUSTOM>. 
+          CLEAR: <LS_CUSTOM>. 
+        ENDIF. 
+        ASSIGN COMPONENT 'MENGE' OF STRUCTURE <LS_MB> TO <LS_CUSTOM>. 
+        IF <LS_CUSTOM> IS ASSIGNED. 
+          LS_STND_MB51-MENGE = <LS_CUSTOM>. 
+          CLEAR: <LS_CUSTOM>. 
+        ENDIF. 
+        APPEND LS_STND_MB51 TO LT_STND_MB51. 
+        CLEAR: LS_STND_MB51. 
+      ENDLOOP. 
+    ENDIF. 
+    CL_SALV_BS_RUNTIME_INFO=>CLEAR_ALL( ). 
+*** Lead time from zinv_mgmnt Table. 
+    SELECT * FROM ZINV_MGMNT INTO TABLE @DATA(LT_INV_MGMNT) FOR ALL ENTRIES IN 
+                 @LT_MARC WHERE WERKS = @LT_MARC-WERKS AND 
+                                MATNR = @LT_MARC-MATNR. 
+*** Open Sale order Qty- from ZSD_OSR report. 
+    REFRESH: RT_DATE[],RT_AUART[],RT_VKORG[],RT_SPART[]. 
+    CLEAR: LIT_LINE,RT_DATE. 
+    IF <LS_CUSTOM> IS ASSIGNED. 
+      CLEAR: <LS_CUSTOM>. 
+      UNASSIGN: <LS_CUSTOM>. 
+    ENDIF. 
+    IF <LS_MB> IS ASSIGNED. 
+      CLEAR: LS_MB. 
+      UNASSIGN:<LS_MB>. 
+    ENDIF. 
+    IF <LT_MB> IS ASSIGNED. 
+      REFRESH: <LT_MB>. 
+      UNASSIGN :<LT_MB>. 
+    ENDIF. 
+    RT_DATE[]   = VALUE #( ( SIGN = 'I' OPTION = 'BT' LOW = LV_LAST30DAY HIGH = SY-DATUM ) ). 
+    RT_AUART[]  = VALUE #( ( SIGN = 'I' OPTION = 'EQ' LOW = 'ZFOC'  ) ). 
+    RT_VKORG[]  = VALUE #( ( SIGN = 'I' OPTION = 'EQ' LOW = '3000'  ) ). 
+    RT_SPART[]  = VALUE #( ( SIGN = 'I' OPTION = 'EQ' LOW = '88'    ) ). 
+** Settings - No ALV display, No metadata(Layout, Field Catalog) needed, ALV Data is needed 
+    CL_SALV_BS_RUNTIME_INFO=>SET( EXPORTING DISPLAY  = ABAP_FALSE 
+                                            METADATA = ABAP_FALSE 
+                                            DATA     = ABAP_TRUE ). 
+    SUBMIT ZSD_ORDER_STATUS_REPORT_N USING SELECTION-SCREEN '1000' 
+       WITH S_AUART IN RT_AUART[] 
+       WITH S_ERDAT IN RT_DATE[] 
+       WITH S_VKORG IN RT_VKORG[] 
+       WITH S_SPART IN RT_SPART[] 
+       WITH RB_ALL  = 'X' AND RETURN. 
+    REFRESH: RT_VKORG,RT_AUART,RT_SPART,RT_DATE. 
+    FREE:RT_VKORG,RT_AUART,RT_SPART,RT_DATE. 
+    TRY. 
+        CL_SALV_BS_RUNTIME_INFO=>GET_DATA_REF( IMPORTING R_DATA = LS_MB ). 
+        IF LS_MB IS NOT INITIAL. 
+          ASSIGN LS_MB->* TO <LT_MB>. 
+        ENDIF. 
+      CATCH CX_SALV_BS_SC_RUNTIME_INFO. 
+        MESSAGE 'Unable to retrieve ALV data from ZSD_OSR' TYPE 'E'. 
+    ENDTRY. 
+    IF <LT_MB> IS ASSIGNED. 
+      CREATE DATA LIT_LINE LIKE LINE OF <LT_MB>. 
+      ASSIGN LIT_LINE->* TO <LS_MB>. 
+      LOOP AT <LT_MB> INTO <LS_MB>. 
+        ASSIGN COMPONENT 'BAL_QTY' OF STRUCTURE <LS_MB> TO <LS_CUSTOM>. 
+        IF <LS_CUSTOM> IS ASSIGNED. 
+          LS_ZSD_OSR-BAL_QTY = <LS_CUSTOM>. 
+          CLEAR: <LS_CUSTOM>. 
+        ENDIF. 
+        ASSIGN COMPONENT 'ABGRU' OF STRUCTURE <LS_MB> TO <LS_CUSTOM>. 
+        IF <LS_CUSTOM> IS ASSIGNED. 
+          LS_ZSD_OSR-ABGRU = <LS_CUSTOM>. 
+          CLEAR: <LS_CUSTOM>. 
+        ENDIF. 
+        ASSIGN COMPONENT 'MATNR' OF STRUCTURE <LS_MB> TO <LS_CUSTOM>. 
+        IF <LS_CUSTOM> IS ASSIGNED. 
+          LS_ZSD_OSR-ABGRU = <LS_CUSTOM>. 
+          CLEAR: <LS_CUSTOM>. 
+        ENDIF. 
+        ASSIGN COMPONENT 'WERKS' OF STRUCTURE <LS_MB> TO <LS_CUSTOM>. 
+        IF <LS_CUSTOM> IS ASSIGNED. 
+          LS_ZSD_OSR-ABGRU = <LS_CUSTOM>. 
+          CLEAR: <LS_CUSTOM>. 
+        ENDIF. 
+        APPEND LS_ZSD_OSR TO LT_ZSD_OSR. 
+        CLEAR: LS_ZSD_OSR. 
+      ENDLOOP. 
+    ENDIF. 
+    CL_SALV_BS_RUNTIME_INFO=>CLEAR_ALL( ). 
+*** Open PO-Qty. 
+    SELECT EBELN, 
+           EBELP, 
+           MATNR, 
+           WERKS FROM EKPO INTO TABLE @DATA(LT_EKPO) FOR ALL ENTRIES IN 
+                 @LT_MARC WHERE LOEKZ EQ ''            AND 
+                                MATNR = @LT_MARC-MATNR AND 
+                                WERKS = @LT_MARC-WERKS AND 
+                                ELIKZ EQ ''. 
+    IF LT_EKPO IS NOT INITIAL. 
+      SELECT EBELN, 
+             EBELP, 
+             ETENR, 
+             MENGE, 
+             WEMNG FROM EKET INTO TABLE @DATA(LT_EKET) 
+                         FOR ALL ENTRIES IN @LT_EKPO 
+                         WHERE EBELN = @LT_EKPO-EBELN AND 
+                               EBELP = @LT_EKPO-EBELP. 
+*      ENDIF. 
+    ENDIF. 
+*** Open PR Qty. 
+    SELECT BANFN, 
+           BNFPO, 
+           STATU, 
+           MATNR, 
+           WERKS, 
+           MENGE, 
+           BSMNG FROM EBAN INTO TABLE @DATA(LT_EBAN) FOR ALL ENTRIES IN 
+                 @LT_MARC WHERE LOEKZ  EQ ' '               AND 
+                                STATU  IN ( 'N', 'B' )      AND 
+                                MATNR  =  @LT_MARC-MATNR    AND 
+                                WERKS  =  @LT_MARC-WERKS    AND 
+                                EBAKZ  EQ ' '. 
+ 
+  ENDIF. 
+ 
+*** Final Table filling. 
+  CLEAR:LS_STND_MB52. 
+  SORT LT_STND_MB52 BY MATNR WERKS. 
+  SORT LT_STND_MB51 BY MATNR WERKS. 
+  SORT LT_ZSD_OSR   BY MATNR WERKS. 
+  SORT LT_EKPO      BY MATNR WERKS. 
+  DATA: LV_TABIX51  TYPE SY-TABIX, 
+        LV_TABIX52  TYPE SY-TABIX, 
+        LV_TABIXOSR TYPE SY-TABIX, 
+        LV_TABIXOPO TYPE SY-TABIX. 
+  LOOP AT LT_MARC INTO DATA(LS_MARC). 
+    TRY . 
+        DATA(LS_MARA) = LT_MARA[ MATNR = LS_MARC-MATNR ]. 
+        LS_FINAL-MATNR   = |{ LS_MARA-MATNR ALPHA = OUT }|       .  "Material Code 
+        LS_FINAL-MTART   = LS_MARA-MTART                         .  "Material Type 
+        LS_FINAL-MAKTX   = LT_MAKT[ MATNR = LS_MARA-MATNR ]-MAKTX.  "Material Description 
+        LS_FINAL-WERKS   = LS_MARC-WERKS  .                         "Plant 
+      CATCH CX_SY_ITAB_LINE_NOT_FOUND. 
+ 
+    ENDTRY. 
+    READ TABLE LT_STND_MB52 INTO LS_STND_MB52 WITH KEY MATNR = LS_MARC-MATNR 
+                                                       WERKS = LS_MARC-WERKS BINARY SEARCH. 
+    IF SY-SUBRC = 0. 
+      CLEAR: LS_STND_MB52. 
+      LV_TABIX52 = SY-TABIX. 
+      LOOP AT LT_STND_MB52 INTO  LS_STND_MB52 FROM LV_TABIX52. 
+        IF LS_STND_MB52-MATNR    = LS_MARC-MATNR AND 
+           LS_STND_MB52-WERKS    = LS_MARC-WERKS. 
+        ELSE. 
+          EXIT. 
+        ENDIF. 
+        IF LS_MARA-MTART = 'ZROH'. 
+          IF LS_STND_MB52-LGORT = '0041'. 
+**Available QAS Inspection. 
+            LS_FINAL-INSME = LS_FINAL-INSME + LS_STND_MB52-INSME   . "INSME 
+**Transit & Transfer /Stock in Transist. 
+            LS_FINAL-UMLME = LS_FINAL-UMLME + LS_STND_MB52-UMLME   . "UMLME 
+**Available Un-Restricted. 
+            LS_FINAL-LABST = LS_FINAL-LABST + LS_STND_MB52-LABST   . "LABST 
+          ENDIF. 
+        ELSE. 
+**Available QAS Inspection. 
+          LS_FINAL-INSME = LS_FINAL-INSME + LS_STND_MB52-INSME     . "INSME 
+**Transit & Transfer /Stock in Transist. 
+          LS_FINAL-UMLME = LS_FINAL-UMLME + LS_STND_MB52-UMLME     . "UMLME 
+**Available Un-Restricted. 
+          LS_FINAL-LABST = LS_FINAL-LABST + LS_STND_MB52-LABST     . "LABST 
+        ENDIF. 
+      ENDLOOP. 
+    ELSE. 
+      CLEAR: LV_TABIX52. 
+    ENDIF. 
+    READ TABLE LT_STND_MB51 INTO LS_STND_MB51 WITH KEY MATNR = LS_MARC-MATNR 
+                                                       WERKS = LS_MARC-WERKS BINARY SEARCH. 
+    IF SY-SUBRC = 0. 
+      CLEAR: LS_STND_MB51. 
+      LV_TABIX51 = SY-TABIX. 
+      LOOP AT LT_STND_MB51 INTO LS_STND_MB51 FROM LV_TABIX51. 
+        IF LS_STND_MB51-MATNR    = LS_MARC-MATNR AND 
+           LS_STND_MB51-WERKS    = LS_MARC-WERKS. 
+        ELSE. 
+          EXIT. 
+        ENDIF. 
+        IF LS_STND_MB51-BWART = '261' OR 
+           LS_STND_MB51-BWART = '262' OR 
+           LS_STND_MB51-BWART = '601' OR 
+           LS_STND_MB51-BWART = '602' . 
+**Avg Monthly Cons from Last 3 month 
+          IF ( LS_STND_MB51-BUDAT GE LV_LAST30DAY ) AND 
+             ( LS_STND_MB51-BUDAT LT SY-DATUM ). 
+            LS_FINAL-MENGE_3 = LS_FINAL-MENGE_3 + LS_STND_MB51-MENGE . 
+          ENDIF. 
+**Avg Monthly Cons from Last 12 month 
+          IF ( LS_STND_MB51-BUDAT GE LV_LAST365DAY ) AND 
+             ( LS_STND_MB51-BUDAT LT SY-DATUM ). 
+            LS_FINAL-MENGE_12 = LS_FINAL-MENGE_12 + LS_STND_MB51-MENGE . 
+          ENDIF. 
+        ENDIF. 
+      ENDLOOP. 
+    ENDIF. 
+    IF LS_FINAL-MENGE_3 IS NOT INITIAL. 
+      IF LS_FINAL-MENGE_3 < 0. 
+        LS_FINAL-MENGE_3 = LS_FINAL-MENGE_3 * -1. 
+      ENDIF. 
+      LS_FINAL-MENGE_3 = LS_FINAL-MENGE_3 / 3. 
+    ENDIF. 
+    IF LS_FINAL-MENGE_12 IS NOT INITIAL. 
+      IF LS_FINAL-MENGE_12 < 0. 
+        LS_FINAL-MENGE_12 = LS_FINAL-MENGE_12 * -1. 
+      ENDIF. 
+      LS_FINAL-MENGE_12 = LS_FINAL-MENGE_12 / 12. 
+    ENDIF. 
+**Stock Availability for days. 
+    IF LS_FINAL-MENGE_3 > 0. 
+      LS_FINAL-MENGE_SA = ( ( LS_FINAL-INSME + LS_FINAL-LABST ) / LS_FINAL-MENGE_3 ) * 30. 
+    ENDIF. 
+**Lead Time 
+    TRY. 
+        LS_FINAL-LT = LT_INV_MGMNT[ WERKS = LS_MARC-WERKS MATNR = LS_MARA-MATNR ]-LEAD_TIME. 
+      CATCH CX_SY_ITAB_LINE_NOT_FOUND. 
+    ENDTRY. 
+** Lead time demand. 
+    LS_FINAL-LT_D = LS_FINAL-LT * ( LS_FINAL-MENGE_3 / 30 ). 
+** Safety Stock. 
+    LS_FINAL-LT_S = ( LS_FINAL-LT_D * 50 ) / 100 . 
+** Open Sale Order Quantity 
+    READ TABLE LT_ZSD_OSR INTO LS_ZSD_OSR WITH KEY MATNR = LS_MARC-MATNR 
+                                                   WERKS = LS_MARC-WERKS BINARY SEARCH. 
+    IF SY-SUBRC = 0. 
+      LV_TABIXOSR = SY-TABIX. 
+      LOOP AT LT_ZSD_OSR INTO LS_ZSD_OSR FROM LV_TABIXOSR . 
+        IF LS_ZSD_OSR-MATNR = LS_MARC-MATNR . 
+          LS_ZSD_OSR-WERKS = LS_MARC-WERKS . 
+        ELSE. 
+          EXIT. 
+        ENDIF. 
+        IF LS_ZSD_OSR-ABGRU NE ' ' . 
+          LS_FINAL-MEINS_OSQ = LS_FINAL-MEINS_OSQ  + LS_ZSD_OSR-BAL_QTY. 
+          CLEAR: LS_ZSD_OSR. 
+        ENDIF. 
+      ENDLOOP. 
+    ENDIF. 
+** Re-Order Level. 
+    IF LS_MARA-MTART = 'ZROH'. 
+      LS_FINAL-MEINS_ROL = LS_FINAL-LT_D + LS_FINAL-LT_S . 
+    ELSEIF LS_MARA-MTART = 'ZHAW'. 
+      LS_FINAL-MEINS_ROL = LS_FINAL-LT_D + LS_FINAL-LT_S + LS_FINAL-MEINS_OSQ. 
+    ENDIF. 
+** Re-Order Qty. 
+    IF LS_MARA-MTART = 'ZROH'. 
+      LS_FINAL-MEINS_ROQ = ( LS_FINAL-MENGE_3 * 3 ). 
+    ELSEIF LS_MARA-MTART = 'ZHAW'. 
+      LS_FINAL-MEINS_ROQ = ( LS_FINAL-MENGE_3 * 3 ) + LS_FINAL-MEINS_OSQ. 
+    ENDIF. 
+** Open PO Qty 
+    READ TABLE LT_EKPO INTO DATA(LS_EKPO) WITH KEY MATNR = LS_MARC-MATNR 
+                                             WERKS = LS_MARC-WERKS BINARY SEARCH. 
+    IF SY-SUBRC = 0. 
+      LV_TABIXOPO = SY-TABIX. 
+      CLEAR: LS_EKPO. 
+      LOOP AT LT_EKPO INTO LS_EKPO FROM LV_TABIXOPO. 
+        IF LS_EKPO-MATNR = LS_MARC-MATNR AND 
+           LS_EKPO-WERKS = LS_MARC-WERKS. 
+        ELSE. 
+          EXIT. 
+        ENDIF. 
+        DATA(LS_EKET) = LT_EKET[ EBELN = LS_EKPO-EBELN EBELP = LS_EKPO-EBELP ]  . 
+        LS_FINAL-MEINS_OPQ = LS_FINAL-MEINS_OPQ + ( LS_EKET-MENGE - LS_EKET-WEMNG ) . 
+      ENDLOOP. 
+    ENDIF. 
+** Open PR Qty. 
+    READ TABLE LT_EBAN INTO DATA(LS_EBAN) WITH KEY MATNR = LS_MARC-MATNR 
+                                                   WERKS = LS_MARC-WERKS BINARY SEARCH. 
+    IF SY-SUBRC = 0. 
+      CLEAR: LV_TABIXOPO. 
+      LV_TABIXOPO = SY-TABIX. 
+      CLEAR: LS_EBAN. 
+      LOOP AT LT_EBAN INTO LS_EBAN FROM LV_TABIXOPO. 
+        IF LS_EBAN-MATNR = LS_MARC-MATNR AND 
+           LS_EBAN-WERKS = LS_MARC-WERKS. 
+        ELSE. 
+          EXIT. 
+        ENDIF. 
+        IF LS_EBAN-STATU = 'N'. 
+          LS_FINAL-MEINS_OPR   = LS_FINAL-MEINS_OPR  + LS_EBAN-MENGE. 
+        ELSEIF LS_EBAN-STATU = 'B'. 
+          LS_FINAL-MEINS_OPR = LS_FINAL-MEINS_OPR + ( LS_EBAN-MENGE - LS_EBAN-BSMNG ). 
+        ENDIF. 
+      ENDLOOP. 
+    ENDIF. 
+** PR To Be Raised. 
+    DATA(LV_ORR) =  LS_FINAL-INSME + LS_FINAL-INSME + LS_FINAL-LABST + 
+       LS_FINAL-MEINS_OPQ + LS_FINAL-MEINS_OPR . 
+    IF  LV_ORR < LS_FINAL-MEINS_ROL. 
+      LS_FINAL-MEINS_ORR = LS_FINAL-MEINS_ROQ. 
+    ELSE. 
+      LS_FINAL-MEINS_ORR = 0. 
+    ENDIF. 
+** Ph Stock Below Reorder Level. 
+    IF LS_FINAL-LABST < LS_FINAL-MEINS_ROL. 
+      LS_FINAL-MEINS_PH = LS_FINAL-LABST - LS_FINAL-MEINS_ROL. 
+    ELSE. 
+      LS_FINAL-MEINS_PH = 0. 
+    ENDIF. 
+    IF LS_FINAL-MEINS_PH < 0. 
+      CLEAR XCOLOR. 
+      XCOLOR-FNAME = 'MEINS_PH'. 
+      XCOLOR-COLOR-COL = '3'. 
+*      XCOLOR-COLOR-INT = '1'. "Intensified on/off 
+*      XCOLOR-COLOR-INV = '0'. 
+      APPEND XCOLOR TO LS_FINAL-TCOLOR. 
+      CLEAR: XCOLOR. 
+    ELSEIF LS_FINAL-MEINS_PH > 0. 
+      XCOLOR-FNAME = 'MEINS_PH'. 
+      XCOLOR-COLOR-COL = '6'. 
+      APPEND XCOLOR TO LS_FINAL-TCOLOR. 
+      CLEAR: XCOLOR. 
+    ENDIF. 
+    GT_FINAL = VALUE #( BASE GT_FINAL ( LS_FINAL ) ) . 
+    CLEAR: LS_FINAL,LS_MARA,LS_STND_MB51,LS_STND_MB52. 
+  ENDLOOP. 
+ENDFORM. 
+*&---------------------------------------------------------------------* 
+*&      Form  ALV_DISPLAY 
+*&---------------------------------------------------------------------* 
+*       text 
+*----------------------------------------------------------------------* 
+FORM ALV_DISPLAY . 
+  DATA(IT_FCAT) = VALUE SLIS_T_FIELDCAT_ALV( 
+                  ( FIELDNAME = 'MATNR'      SELTEXT_L = 'Material' ) 
+                  ( FIELDNAME = 'MAKTX'      SELTEXT_L = 'Description'           ) 
+                  ( FIELDNAME = 'MTART'      SELTEXT_L = 'Material Type' ) 
+                  ( FIELDNAME = 'WERKS'      SELTEXT_L = 'Plant' ) 
+                  ( FIELDNAME = 'INSME'      SELTEXT_L = 'Available QAS Insp' ) 
+                  ( FIELDNAME = 'LABST'      SELTEXT_L = 'Available Unrestricted' ) 
+                  ( FIELDNAME = 'UMLME'      SELTEXT_L = 'Transist & Transfer' ) 
+                  ( FIELDNAME = 'MENGE_3'    SELTEXT_L = 'Avg Monthly cons from Last 3 months' ) 
+                  ( FIELDNAME = 'MENGE_12'   SELTEXT_L = 'Avg Monthly cons from Last 12 months' ) 
+                  ( FIELDNAME = 'MENGE_SA'   SELTEXT_L = 'Stock available for Days' ) 
+                  ( FIELDNAME = 'LT'         SELTEXT_L = 'Lead Time' ) 
+                  ( FIELDNAME = 'LT_D'       SELTEXT_L = 'Lead Time Demand' ) 
+                  ( FIELDNAME = 'LT_S'       SELTEXT_L = 'Safety Stock' ) 
+                  ( FIELDNAME = 'MEINS_OSQ'  SELTEXT_L = 'Open SO Qty' ) 
+                  ( FIELDNAME = 'MEINS_ROL'  SELTEXT_L = 'Re-Order Level' ) 
+                  ( FIELDNAME = 'MEINS_ROQ'  SELTEXT_L = 'Re-Order Qty' ) 
+                  ( FIELDNAME = 'MEINS_OPQ'  SELTEXT_L = 'open PO Qty' ) 
+                  ( FIELDNAME = 'MEINS_OPR'  SELTEXT_L = 'Open PR Qty' ) 
+                  ( FIELDNAME = 'MEINS_ORR'  SELTEXT_L = 'PR to be raised' ) 
+                  ( FIELDNAME = 'MEINS_PH'   SELTEXT_L = 'PH Stock below Reorder Level' ) 
+                  ). 
+  DATA(LS_LAY) = VALUE SLIS_LAYOUT_ALV( COLWIDTH_OPTIMIZE = 'X' ). 
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY' 
+    EXPORTING 
+      IS_LAYOUT     = LS_LAY 
+      IT_FIELDCAT   = IT_FCAT 
+    TABLES 
+      T_OUTTAB      = GT_FINAL 
+    EXCEPTIONS 
+      PROGRAM_ERROR = 1 
+      OTHERS        = 2. 
+  IF SY-SUBRC <> 0. 
+* Implement suitable error handling here 
+  ENDIF. 
+ENDFORM. 
+*&---------------------------------------------------------------------* 
+*&      Form  SCREEN_VALIDATION 
+*&---------------------------------------------------------------------* 
+*       Input screen validation 
+*----------------------------------------------------------------------* 
+FORM SCREEN_VALIDATION . 
+  IF R1 IS NOT INITIAL AND SY-UCOMM = 'ONLI'. 
+    IF S_MATNR IS NOT INITIAL. 
+      SELECT SINGLE @ABAP_TRUE  FROM MARA INTO @DATA(LV_TEXT) WHERE MATNR IN @S_MATNR. 
+      IF LV_TEXT IS INITIAL. 
+        MESSAGE 'Given Material is does not exist' TYPE 'E'. 
+      ENDIF. 
+    ENDIF. 
+    IF S_MTART IS NOT INITIAL. 
+      LOOP AT S_MTART WHERE LOW NE 'ZROH' AND LOW NE 'ZHAW'. 
+        MESSAGE 'Don not give other than ZROH/ZHAW material types' TYPE 'E'. 
+      ENDLOOP. 
+    ENDIF. 
+    IF S_WERKS IS NOT INITIAL. 
+      SELECT SINGLE @ABAP_TRUE  FROM T001W INTO @DATA(LV_TEXT1) WHERE WERKS IN @S_WERKS. 
+      IF LV_TEXT1 IS INITIAL. 
+        MESSAGE 'Given Plant is does not exist' TYPE 'E'. 
+      ENDIF. 
+    ENDIF. 
+  ENDIF. 
+ENDFORM. 
+*&---------------------------------------------------------------------* 
+*&      Form  LEADTIME_UPLOAD 
+*&---------------------------------------------------------------------* 
+*       text 
+*----------------------------------------------------------------------* 
+FORM LEADTIME_UPLOAD . 
+  DATA: LV_FILENAME TYPE RLGRAP-FILENAME, 
+        LT_EXCEL    TYPE STANDARD TABLE OF ZINV_MGMNT INITIAL SIZE 1. 
+  LV_FILENAME = P_PATH. 
+  REFRESH: LT_EXCEL. 
+  DATA: LT_RAWDATA TYPE TRUXS_T_TEXT_DATA. 
+  CALL FUNCTION 'TEXT_CONVERT_XLS_TO_SAP' 
+    EXPORTING 
+      I_FIELD_SEPERATOR    = 'X' 
+      I_LINE_HEADER        = 'X' 
+      I_TAB_RAW_DATA       = LT_RAWDATA 
+      I_FILENAME           = LV_FILENAME 
+    TABLES 
+      I_TAB_CONVERTED_DATA = LT_EXCEL 
+    EXCEPTIONS 
+      CONVERSION_FAILED    = 1 
+      OTHERS               = 2. 
+  IF SY-SUBRC <> 0. 
+    MESSAGE ID SY-MSGID 
+        TYPE SY-MSGTY 
+        NUMBER SY-MSGNO 
+        WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4. 
+  ENDIF. 
+  IF LT_EXCEL IS NOT INITIAL. 
+    MODIFY ZINV_MGMNT FROM TABLE LT_EXCEL. 
+    IF SY-SUBRC = 0. 
+      MESSAGE 'Data Uploaded Successfully' TYPE 'S'. 
+    ENDIF. 
+  ENDIF. 
+ENDFORM. 
+*&---------------------------------------------------------------------* 
+*&      Form  F4_FILEPATH 
+*&---------------------------------------------------------------------* 
+*       text 
+*----------------------------------------------------------------------* 
+FORM F4_FILEPATH . 
+  DATA: LV_FILENAME TYPE IBIPPARMS-PATH. 
+  CALL FUNCTION 'F4_FILENAME' 
+    EXPORTING 
+      PROGRAM_NAME  = SYST-CPROG 
+      DYNPRO_NUMBER = SYST-DYNNR 
+      FIELD_NAME    = 'P_PATH' 
+    IMPORTING 
+      FILE_NAME     = LV_FILENAME. 
+  IF LV_FILENAME IS NOT INITIAL. 
+    P_PATH = LV_FILENAME. 
+  ENDIF. 
+ENDFORM. 
+*&---------------------------------------------------------------------* 
+*&      Form  SS_CHANGES 
+*&---------------------------------------------------------------------* 
+*       text 
+*----------------------------------------------------------------------* 
+FORM SS_CHANGES . 
+  LOOP AT SCREEN. 
+    IF R1 IS NOT INITIAL. 
+      IF SCREEN-NAME = 'P_PATH' OR 
+         SCREEN-NAME = '%_P_PATH_%_APP_%-TEXT' . 
+        SCREEN-INPUT = 0. 
+        SCREEN-INVISIBLE = 1. 
+        MODIFY SCREEN. 
+      ENDIF. 
+    ELSEIF R2 IS NOT INITIAL. 
+      IF SCREEN-NAME = 'P_PATH' OR 
+         SCREEN-NAME = '%_P_PATH_%_APP_%-TEXT' . 
+        SCREEN-INVISIBLE = 0. 
+        MODIFY SCREEN. 
+      ENDIF. 
+    ENDIF. 
+  ENDLOOP. 
+ENDFORM. 
+ 
+----------------------------------------------------------------------------------------------------------- 
+----------------------------------------------------------------------------------------------------------- 
+To Upload the Lead Time into one custom database table. I have created one custom table as below. 
+ 
+ 
+
