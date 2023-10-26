@@ -1,0 +1,16 @@
+    DATA : l_tab_long TYPE catsxt_longtext_itab.
+    CALL FUNCTION 'CATSXT_SIMPLE_TEXT_EDITOR'
+      EXPORTING
+        im_title = 'Please Enter Reason for Rejection'
+      CHANGING
+        ch_text  = l_tab_long.
+
+    IF l_tab_long[] IS NOT INITIAL.
+
+      LOOP AT l_tab_long INTO DATA(l_str_long).
+        CONCATENATE  lv_reason l_str_long INTO DATA(lv_reason)
+         SEPARATED BY space.
+      ENDLOOP.
+    ELSE.
+      MESSAGE 'Please enter reason for rejection' TYPE 'E'.
+    ENDIF.
