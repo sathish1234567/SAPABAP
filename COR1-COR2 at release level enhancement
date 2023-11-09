@@ -1,0 +1,63 @@
+  METHOD valid_release.
+    DATA : lt_header    TYPE TABLE OF caufvdb,
+           lt_component TYPE TABLE OF resbb.
+
+
+    TYPES : BEGIN OF ty_stpo,
+              stlnr TYPE stnum,
+              datuv TYPE datuv,
+              idnrk TYPE idnrk,
+              posnr TYPE sposn,
+              sortf TYPE sortp,
+            END OF ty_stpo.
+
+    DATA : it_stpo TYPE TABLE OF ty_stpo,
+           wa_stpo TYPE ty_stpo.
+
+    DATA : ls_component TYPE resbb.
+*    DATA : lt_component_tmp TYPE cobai_t_component.
+
+    DATA : lv_error TYPE string.
+
+
+
+*   Get order header data from buffer table
+    CALL FUNCTION 'CO_BH_CAUFV_BT_FETCH'
+      TABLES
+        et_caufv_bt = lt_header.
+
+*   Get component data from buffer table
+    CALL FUNCTION 'CO_BC_RESB_BT_FETCH'
+      TABLES
+        et_resb_bt = lt_component.
+    IF NOT lt_component IS INITIAL.
+*       delete lt_component where
+    ENDIF.
+    IF sy-tcode = 'COR1' OR sy-tcode = 'COR2' .
+      IF lt_header IS NOT INITIAL AND NOT lt_component IS INITIAL.
+        SELECT stlnr datuv idnrk posnr sortf FROM stpo INTO TABLE it_stpo
+               FOR ALL ENTRIES IN lt_header
+               WHERE stlnr = lt_header-stlnr AND
+                     datuv = lt_header-sdatv AND
+                     sortf = 'C'.
+
+        IF sy-subrc IS INITIAL.
+          SORT lt_component BY posnr.
+          LOOP AT lt_component INTO ls_component.
+            READ TABLE it_stpo INTO wa_stpo
+                 WITH  KEY idnrk = ls_component-matnr
+                           posnr = ls_component-posnr.
+
+            IF sy-subrc IS INITIAL.
+              IF ls_component-charg IS INITIAL.
+                CONCATENATE 'please enter batch for Material'
+                ls_component-matnr INTO lv_error
+                SEPARATED BY space.
+                MESSAGE lv_error TYPE 'E' .
+              ENDIF.
+            ENDIF.
+          ENDLOOP.
+        ENDIF.
+      ENDIF.
+    ENDIF.
+  ENDMETHOD.
