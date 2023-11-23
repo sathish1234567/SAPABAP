@@ -1,0 +1,3 @@
+FM: CONVERT_TIME_INPUT
+    EXPRTING<-- pass time as 10:20:30 means 10-H, 20-M, 30-S
+    importing-- get the internal format as 102030
