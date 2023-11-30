@@ -588,8 +588,8 @@ START-OF-SELECTION.
 *    SELECT * FROM ekpo INTO @DATA(ls_ekpo) WHERE ebeln = @p_ebeln
     SELECT * FROM ekpo INTO TABLE @DATA(lt_ekpo) WHERE ebeln = @p_ebeln
                                              AND ebelp IN @p_ebelp[]
-                                             AND bukrs = @p_bukrs
-                                             and loekz = ' '.
+                                             AND bukrs = @p_bukrs.
+    "                                      and loekz = ' '.
     IF sy-subrc = 0.
       READ TABLE lt_ekpo INTO DATA(ls_ekpo1) INDEX 1.
       SELECT SINGLE * FROM ekko INTO  @DATA(ls_ekko) WHERE ebeln = @p_ebeln
@@ -609,6 +609,14 @@ START-OF-SELECTION.
     CLEAR lv_menge.
     LOOP AT lt_ekpo INTO DATA(ls_ekpo).
       CLEAR lv_menge.
+      IF NOT ls_ekpo-loekz IS INITIAL.
+        CLEAR wa_disp.
+        wa_disp-ebeln = ls_ekpo-ebeln.
+        wa_disp-ebelp = ls_ekpo-ebelp.
+        wa_disp-msg = 'It is under locked or deleted'.
+        APPEND wa_disp TO it_disp.
+        CONTINUE.
+      ENDIF.
       SELECT  * FROM ekbe INTO TABLE @DATA(lt_ekbe)
                           WHERE ebeln = @ls_ekpo-ebeln
                           AND ebelp = @ls_ekpo-ebelp
