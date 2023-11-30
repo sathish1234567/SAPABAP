@@ -1,0 +1,149 @@
+****Data declaration
+
+  data : lif_ixml type ref to if_ixml ,
+        lif_ixml_document type ref to if_ixml_document ,
+        lif_ixml_stream_factory type ref to if_ixml_stream_factory ,
+        lif_ixml_istream type ref to if_ixml_istream ,
+        lif_ixml_parser type ref to if_ixml_parser ,
+        lif_ixml_parse_error type ref to if_ixml_parse_error ,
+        lif_ixml_node type ref to if_ixml_node,
+        node          type ref to if_ixml_node.
+
+data : lt_xml_error type dts_tty_xml_error ,
+        lt_xml_error_field type dts_tty_xml_error ,
+        lv_error_count type i ,
+        lv_index type i.
+
+  data : lif_ixml_node_list type ref to if_ixml_node_list ,
+        lif_ixml_node_iterator type ref to if_ixml_node_iterator ,
+        lif_ixml_node1 type ref to if_ixml_node ,
+        lif_ixml_node_list1 type ref to if_ixml_node_list ,
+        lif_ixml_node_iterator1 type ref to if_ixml_node_iterator ,
+        lv_type type i ,
+        lv_name type string ,
+        lv_xml type string,
+        lv_value type string .  
+
+
+****Upload the attached text xml into variable lv_xml
+
+ 
+****Show the xml which will be Parsed
+ cl_abap_browser=>show_xml(
+   exporting
+     xml_string   = lv_xml    " XML in String
+ ).
+
+**-- Create the Main Factory
+ lif_ixml = cl_ixml=>create( ).
+
+**-- Create the Initial Document
+ lif_ixml_document = lif_ixml->create_document( ).
+
+**-- Create a Stream Factory
+ lif_ixml_stream_factory = lif_ixml->create_stream_factory( ).
+
+**-- Create an Input Stream
+ lif_ixml_istream       = lif_ixml_stream_factory->create_istream_string( string = lv_xml ).
+
+**-- Create a Parser
+ lif_ixml_parser = lif_ixml->create_parser(
+     document       = lif_ixml_document
+     istream        = lif_ixml_istream
+     stream_factory = lif_ixml_stream_factory
+ ).
+
+**-- check errors in parsing
+ if lif_ixml_parser->parse( ) <> 0.
+   if lif_ixml_parser->num_errors( ) <> 0.
+     lv_error_count = lif_ixml_parser->num_errors( ).
+     lv_index = 0.
+     while lv_index < lv_error_count.
+       lif_ixml_parse_error = lif_ixml_parser->get_error( index = lv_index ).
+       append initial line to lt_xml_error assigning <fs_xml_error>.
+       <fs_xml_error>column_name = lif_ixml_parse_error>get_column( ).
+       <fs_xml_error>line = lif_ixml_parse_error>get_line( ).
+       <fs_xml_error>reason = lif_ixml_parse_error>get_reason( ).
+       lv_index = lv_index + 1.
+     endwhile.
+   endif.
+ endif.
+
+**-- Close the Input Stream after Parsing
+ lif_ixml_istream->close( ).
+
+***Nevigate to the 'DATA' node of xml
+ lif_ixml_node = lif_ixml_document->find_from_name( name = 'DATA' ).
+ ***Get name of the node name will be DATA
+ lv_name = lif_ixml_node->get_name( ).
+ ***In order to process childs of DATA node we need to create iterator using its childerns
+ lif_ixml_node_list = lif_ixml_node->get_children( ).
+ lif_ixml_node_iterator = lif_ixml_node_list->create_iterator( ).
+
+***Loop on actions
+ while lif_ixml_node is not initial.
+   lv_name = lif_ixml_node->get_name( ).
+   IF lif_ixml_node->get_name( ) = 'ACTION'.
+     lif_ixml_node1 = lif_ixml_node->get_first_child( ).
+     lif_ixml_node_list1 = lif_ixml_node->get_children( ).
+     lif_ixml_node_iterator1 = lif_ixml_node_list1->create_iterator( ).
+ ***Loop at fields
+     WHILE lif_ixml_node1 is NOT INITIAL.
+       lv_name = lif_ixml_node1->get_name( ).
+ ****element node
+       node = lif_ixml_node1->get_first_child( ).
+
+      IF node->get_name( ) = 'NAME'.
+         IF node->get_value( ) = 'VBAK-AUART'.
+           node = node->get_next( ).
+           node->set_value( value = 'Test1' ).
+         ENDIF.
+         IF node->get_value( ) = 'VBAK-VKORG'.
+           node = node->get_next( ).
+           node->set_value( value = 'Test2' ).
+         ENDIF.
+         IF node->get_value( ) = 'VBAK-VTWEG'.
+           node = node->get_next( ).
+           node->set_value( value = 'Test3' ).
+         ENDIF.
+         IF node->get_value( ) = 'VBAK-SPART'.
+           node = node->get_next( ).
+           node->set_value( value = 'Test4' ).
+         ENDIF.
+         IF node->get_value( ) = 'VBAK-VKBUR'.
+           node = node->get_next( ).
+           node->set_value( value = 'Test5' ).
+         ENDIF.
+         IF node->get_value( ) = 'VBAK-VKGRP'.
+           node = node->get_next( ).
+           node->set_value( value = 'Test6' ).
+         ENDIF.
+         IF node->get_value( ) = 'VBAK-AUGRU'.
+           node = node->get_next( ).
+           node->set_value( value = 'Test7' ).
+         ENDIF.
+       endif.
+ ***Get the next field under action
+       lif_ixml_node1 = lif_ixml_node_iterator1->get_next( ).
+     ENDWHILE.
+   ENDIF.
+ ***Set the node to next node
+   lif_ixml_node = lif_ixml_node_iterator->get_next( ).
+ endwhile.
+
+***To show the xml on selection screen
+ *call function 'SDIXML_DOM_TO_SCREEN'
+ *  exporting
+ *    document = lif_ixml_document.
+
+data : xml TYPE XSTRING.
+ call function 'SDIXML_DOM_TO_XML'
+   exporting
+     document            = lif_ixml_document
+  IMPORTING
+    XML_AS_STRING       = xml
+           .
+   CL_ABAP_BROWSER=>show_xml(
+   exporting
+     xml_xstring  = xml    " XML in XString
+ ). 
