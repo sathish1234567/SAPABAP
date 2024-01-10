@@ -1,0 +1,130 @@
+  METHOD read_file.
+*  METHOD send_file.
+    DATA :       l_user_1(30) TYPE c ,        "user name of ftp server
+                 l_pwd_1(30)  TYPE c ,        "password of ftp server
+                 l_host_1(64) TYPE c,
+                 l_dest       TYPE rfcdes-rfcdest VALUE 'SAPFTPA',
+                 l_key        TYPE i,
+                 lv_compress  TYPE c VALUE 'N',
+                 l_slen       TYPE i,
+                 l_hdl        TYPE i,
+                 l_pwd_er     TYPE char30,
+                 gv_size      TYPE i,
+                 lv_wrk_file  TYPE char200,
+                 ls_return    TYPE bapiret2.
+
+    TYPES: BEGIN OF ty_sdoki_ftp_result_t," OCCURS 1,
+             line(75) TYPE c,
+           END OF ty_sdoki_ftp_result_t.
+
+    DATA sdoki_ftp_result_t TYPE TABLE OF ty_sdoki_ftp_result_t.
+    DATA sdoki_ftp_result_s TYPE ty_sdoki_ftp_result_t.
+
+    IF is_input-file_name IS INITIAL OR
+       is_input-host IS INITIAL OR
+       is_input-key IS INITIAL OR
+       is_input-user_name IS INITIAL OR
+       is_input-user_pswd IS INITIAL.
+      ls_return-type = 'E'.
+      ls_return-message = 'File Name/Host/Key/User Name/Pssword should not be blank'.
+      APPEND ls_return TO et_return.
+      RETURN.
+    ELSE.
+      l_pwd_1 = is_input-user_pswd.
+      l_key = is_input-key.
+      l_user_1 = is_input-user_name.
+      l_host_1 = is_input-host.
+      lv_wrk_file = is_input-file_name.
+    ENDIF.
+
+
+    SET EXTENDED CHECK OFF.
+*  ***ftp connection logic
+    l_slen = strlen( l_pwd_1 ).
+    CALL FUNCTION 'HTTP_SCRAMBLE'
+      EXPORTING
+        source      = l_pwd_1
+        sourcelen   = l_slen
+        key         = l_key
+      IMPORTING
+        destination = l_pwd_er.
+
+    CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
+      EXPORTING
+        text = 'Connect to FTP Server'.
+
+
+    CALL FUNCTION 'FTP_CONNECT'
+      EXPORTING
+        user            = l_user_1
+        password        = l_pwd_er
+        host            = l_host_1
+        rfc_destination = l_dest
+      IMPORTING
+        handle          = l_hdl
+      EXCEPTIONS
+        OTHERS          = 1.
+    IF sy-subrc NE 0.
+      ls_return-type = 'E'.
+      ls_return-message = 'Error in FTP connect'.
+      APPEND ls_return TO et_return.
+      RETURN.
+    ENDIF.
+
+    DATA(lv_wrk_file1) = |nlist /DMTOROCHEM/FV60_IPH_{ sy-datum }*| .
+    CALL FUNCTION 'FTP_COMMAND'
+      EXPORTING
+        handle        = l_hdl
+        command       = lv_wrk_file1
+*       command       = 'nlist'
+      TABLES
+        data          = sdoki_ftp_result_t
+      EXCEPTIONS
+        tcpip_error   = 1
+        command_error = 2
+        data_error    = 3
+        OTHERS        = 4.
+    IF sy-subrc NE 0.
+      ls_return-type = 'E'.
+      ls_return-message = 'Error in File Read Error'.
+      APPEND ls_return TO et_return.
+      RETURN.
+    ENDIF.
+*    CALL FUNCTION 'FTP_R3_TO_SERVER'
+*      EXPORTING
+*        handle         = l_hdl
+*        fname          = lv_wrk_file          "file path of destination system
+*        blob_length    = gv_size
+*        character_mode = 'X'
+*      TABLES
+**       blob           = itab_bmp "gt_bindata
+*        text           = it_data[] "gt_file
+*      EXCEPTIONS
+*        tcpip_error    = 1
+*        command_error  = 2
+*        data_error     = 3
+*        OTHERS         = 4.
+    IF sy-subrc <> 0.
+      ls_return-type = 'E'.
+      ls_return-message = 'Data send error R3 to Server'.
+      APPEND ls_return TO et_return.
+*      RETURN.
+    ELSE.
+      ls_return-type = 'S'.
+      ls_return-message = 'Data sent successful'.
+      APPEND ls_return TO et_return.
+
+    ENDIF.
+
+*   to disconnect the ftp
+    CALL FUNCTION 'FTP_DISCONNECT'
+      EXPORTING
+        handle = l_hdl.
+*  RFC_CONNECTION_CLOSE:This is used to disconnect the RFC connection between SAP and other system.
+    CALL FUNCTION 'RFC_CONNECTION_CLOSE'
+      EXPORTING
+        destination = l_dest
+      EXCEPTIONS
+        OTHERS      = 1.
+*  ENDMETHOD.
+  ENDMETHOD.
