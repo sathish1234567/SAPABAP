@@ -1,0 +1,212 @@
+FORM po_dd_update .
+  DATA :
+    lv_index    TYPE i,                " To hold loop index.
+    lv_count    TYPE i VALUE 0,        " To count Sequential Number of Vendor Confirmation
+    ls_xekes    TYPE uekes,
+    lt_xekes    TYPE STANDARD TABLE OF uekes,
+    ls_ekes     TYPE ekes,
+    lt_ekes     TYPE STANDARD TABLE OF ekes,
+    lv_ebeln    TYPE ekko-ebeln,
+    lt_ekpo_key TYPE STANDARD TABLE OF ekpo_key,
+    ls_ekpo_key TYPE ekpo_key,
+    lv_tot_qty  TYPE ekpo-menge.
+
+  CLEAR :
+    gs_ekpo.
+  REFRESH :
+    gt_return, lt_xekes, it_bdcmsgcoll1.
+
+  LOOP AT gt_ekpo INTO gs_ekpo.
+
+    CLEAR gs_ekko.
+    READ TABLE gt_ekko INTO gs_ekko WITH KEY ebeln = gs_ekpo-ebeln.
+    IF sy-subrc = 0.
+      CASE gs_ekko-bsart.
+        WHEN  c_nb1  OR
+              c_nb2  OR
+              c_nb3  OR
+              c_nb4  OR
+              c_zim1 OR
+              c_zim2 OR
+              c_zim3 OR
+              c_zim4 OR
+              c_zast OR
+              c_zsub OR
+              c_ztpo.
+          IF NOT gs_ekpo-loekz IS INITIAL.
+            gs_return-type = c_w.
+            CONCATENATE gs_ekpo-ebeln gs_ekpo-ebelp text-002 INTO gs_return-message SEPARATED BY space.
+            APPEND gs_return TO gt_return.
+            CLEAR : gs_return,gs_ekpo.
+            CONTINUE.
+          ENDIF.                             " End of IF NOT GS_EKPO-LOEKZ IS INITIAL.
+
+          IF NOT gs_ekpo-elikz IS INITIAL.
+            gs_return-type = c_w.
+            CONCATENATE gs_ekpo-ebeln gs_ekpo-ebelp text-003 INTO gs_return-message SEPARATED BY space.
+            APPEND gs_return TO gt_return.
+            CLEAR : gs_return,gs_ekpo.
+            CONTINUE.
+          ENDIF.                             " End of IF NOT GS_EKPO-ELIKZ IS INITIAL.
+
+          lv_ebeln = gs_ekpo-ebeln.
+
+          CLEAR ls_ekpo_key.
+          ls_ekpo_key-ebeln = gs_ekpo-ebeln.
+          ls_ekpo_key-ebelp = gs_ekpo-ebelp.
+          APPEND ls_ekpo_key TO lt_ekpo_key.
+          CLEAR ls_ekpo_key.
+
+          READ TABLE gt_final TRANSPORTING NO FIELDS WITH KEY    f5 = gs_ekpo-ebeln
+                                                                 f6 = gs_ekpo-ebelp.
+          IF sy-subrc = 0.
+            CLEAR :lv_index, gs_final.
+            REFRESH : lt_ekes, lt_xekes.
+            lv_index = sy-tabix.
+
+            SELECT * FROM ekes
+              INTO TABLE lt_ekes
+             WHERE ebeln EQ gs_ekpo-ebeln
+               AND ebelp EQ gs_ekpo-ebelp.
+
+            IF NOT lt_ekes IS INITIAL.
+
+              SELECT SUM( menge ) FROM ekes
+               INTO lv_tot_qty
+               WHERE ebeln EQ gs_ekpo-ebeln
+                 AND ebelp EQ gs_ekpo-ebelp.
+
+              SORT lt_ekes BY etens DESCENDING.
+              READ TABLE lt_ekes INTO ls_ekes INDEX 1.
+              IF sy-subrc = 0.
+                lv_count = ls_ekes-etens.
+              ENDIF.                         " End of IF SY-SUBRC = 0.
+            ENDIF.                           " End of IF NOT LT_EKES IS INITIAL.
+
+            CLEAR : gs_final.
+
+            LOOP AT gt_final INTO gs_final FROM lv_index.
+
+              IF gs_final-f5 NE gs_ekpo-ebeln OR gs_final-f6 NE gs_ekpo-ebelp.
+                CLEAR : lv_index,
+                        gs_final,
+                        lv_count,
+                        lv_tot_qty.    " Added by YASH : Madhuri Anmal on 7th August 2018.
+                EXIT.
+              ENDIF.                         " End of IF gs_final-EBELN NE.
+
+              lv_tot_qty = lv_tot_qty + gs_final-f10.
+
+              IF lv_tot_qty LE gs_ekpo-menge.
+                "Delivery date
+*                CALL FUNCTION 'CONVERT_DATE_TO_INTERNAL'
+*                  EXPORTING
+*                    date_external = gs_final-f15
+*                  IMPORTING
+*                    date_internal = gs_final-f15.
+
+                CLEAR ls_xekes.
+                ls_xekes-ebeln = gs_ekpo-ebeln.
+                ls_xekes-ebelp = gs_ekpo-ebelp.
+
+                ls_xekes-etens = lv_count + 1.
+                ADD 1 TO lv_count.
+
+                ls_xekes-ebtyp = 'AB' ."gs_final-ebtyp.
+                ls_xekes-eindt = gs_final-f15.
+                ls_xekes-lpein = 1.
+                ls_xekes-erdat = sy-datum.
+                ls_xekes-ezeit = sy-uzeit.
+                ls_xekes-menge = gs_final-f10.
+                ls_xekes-estkz = '1'.
+                ls_xekes-ekpomeins = gs_ekpo-meins.
+                ls_xekes-werks = gs_ekpo-werks.
+                ls_xekes-lgort = gs_ekpo-lgort.
+
+                ls_xekes-kzdis = c_x.
+
+                ls_xekes-kz    = 'I'.
+
+                APPEND ls_xekes TO lt_xekes.
+                CLEAR: ls_xekes.
+*          LV_TOT_QTY = LV_TOT_QTY + gs_final-MENGE.
+              ELSE.
+                gs_return-type = c_e.
+                CONCATENATE 'Quantity is exceeded for ' gs_ekpo-ebeln gs_ekpo-ebelp INTO gs_return-message SEPARATED BY space.
+                APPEND gs_return TO gt_return.
+                CLEAR :
+                  gs_return,
+                  lv_tot_qty.
+                EXIT.
+              ENDIF.                         " End of IF LV_TOT_QTY < GS_EKPO-MENGE.
+              AT END OF f6.
+                CALL FUNCTION 'ME_CONFIRMATION_UPDATE'
+                  EXPORTING
+                    i_ebeln = lv_ebeln
+                  TABLES
+                    xekes   = lt_xekes
+*                   YEKES   =
+                  .
+                COMMIT WORK AND WAIT.
+
+                CALL FUNCTION 'ME_CONFIRMATION_REDISTR_ITEMS'
+                  TABLES
+                    ti_ekpo_key = lt_ekpo_key.
+
+                REFRESH : lt_ekpo_key, lt_xekes.
+
+                CALL FUNCTION 'BAPI_TRANSACTION_COMMIT'
+                  EXPORTING
+                    wait   = 'X'
+                  IMPORTING
+                    return = gs_return.
+
+                IF sy-subrc = 0.
+                  CLEAR : gs_return,
+                          lv_tot_qty.  " Added by YASH : Madhuri Anmal on 7th August 2018.
+                  gs_return-type = c_i.
+                  CONCATENATE 'Confirmation of ' gs_ekpo-ebeln gs_ekpo-ebelp 'is completed' INTO gs_return-message SEPARATED BY space.
+                  APPEND gs_return TO gt_return.
+                  CLEAR gs_return.
+                ENDIF.                       " End of IF SY-SUBRC EQ 0.
+                CLEAR gs_return.
+                IF NOT gt_return IS INITIAL.
+                  LOOP AT gt_return INTO gs_return.
+*                    wa_bdcmsgcoll1-tcode = 'ZBAPI_VEN_CONF'.
+
+                    CALL FUNCTION 'MESSAGE_TEXT_BUILD'
+                      EXPORTING
+                        msgid               = gs_return-id
+                        msgnr               = gs_return-number
+                        msgv1               = gs_return-message
+                      IMPORTING
+                        message_text_output = wa_bdcmsgcoll1-msgv1.
+
+                    wa_bdcmsgcoll1-msgv2 = lv_ebeln.
+                    wa_bdcmsgcoll1-msgv3 = gs_return-parameter.
+*                    wa_temp = gs_return-row.
+*           WA_BDCMSGCOLL1-MSGV4 =  WA_TEMP.
+                    APPEND wa_bdcmsgcoll1 TO it_bdcmsgcoll1.
+                    CLEAR wa_bdcmsgcoll1.
+                  ENDLOOP.                   " End of LOOP AT GT_RETURN INTO GS_RETURN.
+                ENDIF.
+              ENDAT.                         " End of AT END OF EBELP.
+              CLEAR : gs_final.
+*                LV_EBELN.
+            ENDLOOP.                         " End of LOOP AT GT_PO_ITEMS INTO gs_final FROM LV_INDEX.
+          ENDIF.                             " End of IF SY-SUBRC = 0.
+          CLEAR :
+            gs_return,
+            lv_ebeln,
+            gs_ekpo.
+        WHEN OTHERS.
+          gs_return-type = c_e.
+          CONCATENATE 'Please check document type for'  gs_ekpo-ebeln gs_ekpo-ebelp INTO gs_return-message SEPARATED BY space.
+          APPEND gs_return TO gt_return.
+          CLEAR : gs_return,gs_ekpo, gs_ekko.
+          CONTINUE.
+      ENDCASE.
+      CLEAR : gs_ekko.
+    ENDIF.
+  ENDLOOP.                             " End of LOOP AT GT_EKPO INTO GS_EKPO.
+ENDFORM.
