@@ -1,0 +1,93 @@
+T-code to create new debugger Script: SAS
+
+Code to be written:
+
+*---------------------------------------------------------------------*
+* CLASS lcl_debugger_script DEFINITION
+*---------------------------------------------------------------------*
+*
+*---------------------------------------------------------------------*
+CLASS lcl_debugger_script DEFINITION INHERITING FROM cl_tpda_script_class_super .
+
+PUBLIC SECTION.
+METHODS: prologue REDEFINITION,
+init REDEFINITION,
+script REDEFINITION,
+end REDEFINITION.
+
+DATA: gv_matnr TYPE mara-matnr.
+
+ENDCLASS. "lcl_debugger_script DEFINITION
+*---------------------------------------------------------------------*
+* CLASS lcl_debugger_script IMPLEMENTATION
+*---------------------------------------------------------------------*
+*
+*---------------------------------------------------------------------*
+CLASS lcl_debugger_script IMPLEMENTATION.
+METHOD prologue.
+*** generate abap_source (source handler for ABAP)
+super->prologue( ).
+ENDMETHOD. "prolog
+
+METHOD init.
+*** insert your initialization code here
+ENDMETHOD. "init
+METHOD script.
+
+DATA: lv_matnr TYPE mara-matnr.
+
+****************************************************************
+*Interface (CLASS = CL_TPDA_SCRIPT_DATA_DESCR / METHOD = GET_SIMPLE_VALUE )
+*Importing
+* REFERENCE( P_VAR_NAME ) TYPE TPDA_VAR_NAME
+*Returning
+* VALUE( P_VAR_VALUE ) TYPE TPDA_VAR_VALUE
+****************************************************************
+"Make sure that this debugger script should be called for your program only
+****************************************************************
+*Interface (CLASS = CL_TPDA_SCRIPT_ABAPDESCR / METHOD = PROGRAM )
+*Returning
+* VALUE( P_PRG ) TYPE SY-REPID
+****************************************************************
+
+TRY.
+CALL METHOD abap_source->program
+RECEIVING
+p_prg = DATA(lv_p_prg).
+CATCH cx_tpda_src_info .
+CATCH cx_tpda_src_descr_invalidated .
+ENDTRY.
+
+"Run this script method only for our program
+IF lv_p_prg NE 'ZPKTEST'.
+EXIT.
+ENDIF.
+" Get the <fs>-matnr value from program
+TRY.
+CALL METHOD cl_tpda_script_data_descr=>get_simple_value
+EXPORTING
+p_var_name = '<FS>-MATNR'
+RECEIVING
+p_var_value = lv_matnr.
+CATCH cx_tpda_varname .
+CATCH cx_tpda_script_no_simple_type .
+
+ENTRY.
+
+IF gv_matnr NE lv_matnr.
+*** insert your script code here
+gv_matnr = lv_matnr.
+me->break( ).
+
+ELSE.
+EXIT.
+
+ENDIF.
+
+ENDMETHOD. "script
+METHOD end.
+*** insert your code which shall be executed at the end of the scripting (before trace is saved)
+*** here
+
+ENDMETHOD. "end
+ENDCLASS. "lcl_debugger_script IMPLEMENTATION
