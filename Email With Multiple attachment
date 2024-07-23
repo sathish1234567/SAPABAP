@@ -1,0 +1,1901 @@
+*&---------------------------------------------------------------------*
+*& Report  YSAT_EXCEL_MULTI
+*&
+*&---------------------------------------------------------------------*
+*&
+*&
+*&---------------------------------------------------------------------*
+REPORT ysat_excel_multi.
+*&---------------------------------------------------------------------*
+*& Report ZSD_WCT_SUMMARY
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT zsd_wct_summary.
+
+
+TYPES: BEGIN OF ty_excel1,
+         sales_month   TYPE char70,
+         amt_lakh_mon  TYPE vbrk-netwr,
+         avg_day       TYPE vbrk-netwr,
+         amt_lakh_year TYPE vbrk-netwr,
+       END OF ty_excel1.
+
+" Fisrt block ALV WCT sales send via excel1
+DATA: lt_excel1 TYPE TABLE OF ty_excel1,
+      ls_excel1 TYPE ty_excel1.
+
+TYPES: BEGIN OF ty_excel2,
+         category      TYPE char10,
+         product_line  TYPE char30,
+         amt_lakh_mon  TYPE vbrk-netwr,
+         amt_lakh_year TYPE vbrk-netwr,
+       END OF ty_excel2.
+
+" First block ALV WCT sales send via excel1
+DATA: lt_excel2 TYPE TABLE OF ty_excel2,
+      ls_excel2 TYPE ty_excel2.
+
+TYPES: BEGIN OF ty_interbranch,
+         vbeln     TYPE vbrk-vbeln,        "Inv no
+         year      TYPE char4,
+         xblnr     TYPE vbrk-xblnr,        "Bill/DC no
+         fkdat     TYPE vbrk-fkdat,         "Inv date
+         kunag     TYPE vbrk-kunag,        "Billing to branch
+         netwr     TYPE vbrk-netwr,        "Inv Amount
+         name_org4 TYPE but000-name_org4,   "site
+       END OF ty_interbranch.
+
+DATA: lt_interbranch TYPE TABLE OF ty_interbranch,
+      ls_interbranch TYPE ty_interbranch.
+
+TYPES: BEGIN OF ty_billwise,
+         con_no      TYPE vbrk-vbeln,
+         vbeln       TYPE vbrk-vbeln,      "Billing Doc.
+         regio       TYPE char20,          "Region
+         bzirk       TYPE vbrk-bzirk,      "Sales District
+         cust_type   TYPE char15,          "PRIVATE
+         xblnr       TYPE vbrk-xblnr,      "Reference
+         fkdat       TYPE vbrk-fkdat,      "DATE
+         mon_year    TYPE char20,          "Month & year
+         mon_year1   TYPE char20,          "Month & year
+         cust_name   TYPE kna1-name1,      "cust desc
+         netwr       TYPE vbrk-netwr,      "Net Value
+         tot_amt     TYPE vbrk-netwr,      "vbrk-mwsbk + netwr
+         category1   TYPE vbrk-netwr,
+         category2   TYPE vbrk-netwr,
+         category3   TYPE vbrk-netwr,
+         category4   TYPE vbrk-netwr,
+         category5   TYPE vbrk-netwr,
+         category6   TYPE vbrk-netwr,
+         total       TYPE vbrk-netwr,      "total
+         tax_amt     TYPE vbrk-netwr,
+         con_per     TYPE char30,
+         sales_type  TYPE char30,          "sales type column
+         sales_type1 TYPE char30,          "same like sales type but column name is diff ( category column name)
+         work        TYPE char30,          "same like sales type but column name is diff ( work column name)
+
+       END OF ty_billwise.
+
+DATA: lt_1100_01 TYPE STANDARD TABLE OF ty_billwise,
+      ls_1100_01 TYPE ty_billwise.
+DATA: lt_1100_02 TYPE STANDARD TABLE OF ty_billwise,
+      ls_1100_02 TYPE ty_billwise.
+
+DATA: lt_1200_01 TYPE STANDARD TABLE OF ty_billwise,
+      ls_1200_01 TYPE ty_billwise.
+DATA: lt_1200_02 TYPE STANDARD TABLE OF ty_billwise,
+      ls_1200_02 TYPE ty_billwise.
+
+DATA: lt_billwise TYPE STANDARD TABLE OF ty_billwise,
+      ls_billwise TYPE ty_billwise.
+
+
+
+DATA: lv_fin_year TYPE char4.
+DATA : lv_date1 TYPE sy-datum.
+
+DATA lv_month TYPE char10.
+DATA month_name TYPE char10.
+DATA: lv_month1 TYPE i,
+      lv_year1  TYPE i,
+      lv_days1  TYPE c.
+DATA start_date TYPE sy-datum.  " use for mothly data
+DATA end_date TYPE sy-datum.  " use for mothly data
+
+DATA start_date_y TYPE sy-datum. " use for yearly data
+DATA end_date_y TYPE sy-datum.  " use for yearly data
+DATA year_y TYPE t009b-bdatj.
+
+DATA avg_day TYPE char15.
+DATA lv_day TYPE c.
+DATA lt_vbrk_monthly TYPE vbrk.
+
+"-Field Catalouge
+DATA: wa_fcat TYPE slis_fieldcat_alv,
+      it_fcat TYPE slis_t_fieldcat_alv.
+"-Layout
+DATA: wa_lay_sales TYPE slis_layout_alv.
+
+DATA: gv_fkdat TYPE vbrk-fkdat.
+" Input screen
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME.
+SELECT-OPTIONS :  s_fkdat FOR gv_fkdat.
+SELECTION-SCREEN END OF BLOCK b1.
+
+
+START-OF-SELECTION.
+
+  PERFORM get_data_interbranch.  " interbranch ( result send via mail aatchment )
+  PERFORM get_data_billwise.     " billwise ( result send via mail aatchment )
+  PERFORM get_data.              " summary get gata showing in body mail
+  PERFORM get_data_cat.          " catgorywise get data showing in body mail
+
+  IF s_fkdat IS INITIAL.
+    PERFORM send_mail.
+  ENDIF.
+  IF s_fkdat IS NOT INITIAL.
+    PERFORM layout.
+  ENDIF.
+*&---------------------------------------------------------------------*
+*& Form GET_DATA
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM get_data .
+
+  """"""""""""""""""""""""""""""""""""""""""""""SOL of Summary report part-I """"""""""""""""""""""""""""""""""'
+  " Required FM for Monthly get for netwr
+  CALL FUNCTION 'HR_JP_MONTH_BEGIN_END_DATE'
+    EXPORTING
+      iv_date             = sy-datum
+    IMPORTING
+      ev_month_begin_date = start_date
+      ev_month_end_date   = end_date.
+
+  IF sy-datum+4(2) = '01' OR sy-datum+4(2) = '02' OR sy-datum+4(2) = '03'. " het logic for yearly date
+    year_y = sy-datum+0(4) - 1.
+    CALL FUNCTION 'FIRST_AND_LAST_DAY_IN_YEAR_GET'
+      EXPORTING
+        i_gjahr     = year_y
+        i_periv     = 'V3'
+      IMPORTING
+        e_first_day = start_date_y
+        e_last_day  = end_date_y.
+    IF sy-subrc <> 0.
+* Implement suitable error handling here
+    ENDIF.
+  ELSE.
+    year_y = sy-datum+0(4).
+    CALL FUNCTION 'FIRST_AND_LAST_DAY_IN_YEAR_GET'
+      EXPORTING
+        i_gjahr     = year_y
+        i_periv     = 'V3'
+      IMPORTING
+        e_first_day = start_date_y
+        e_last_day  = end_date_y.
+    IF sy-subrc <> 0.
+* Implement suitable error handling here
+    ENDIF.
+  ENDIF.
+
+  IF s_fkdat IS NOT INITIAL.
+
+    SELECT * FROM vbrk INTO TABLE @DATA(lt_vbrk)
+      WHERE fkdat IN @s_fkdat
+*      AND FKART = 'ZPIR'
+      AND fkart = 'ZPCR'
+*      AND FKTYP = 'D'
+      AND vtweg = '10'
+      AND vkorg IN ('1100','1200')
+      AND fksto NE 'X'.
+
+  ELSE.
+
+    SELECT * FROM vbrk INTO TABLE @DATA(lt_vbrk1)
+*      WHERE FKART = 'ZPIR'
+      WHERE fkart = 'ZPCR'
+*      AND FKTYP = 'D'
+      AND vtweg = '10'
+      AND vkorg IN ('1100','1200')
+      AND fksto NE 'X'.
+
+    lt_vbrk = lt_vbrk1.
+
+  ENDIF.
+
+  IF lt_vbrk IS NOT INITIAL.
+    SELECT vbeln, spart FROM vbrp INTO TABLE @DATA(lt_vbrp)
+       FOR ALL ENTRIES IN @lt_vbrk
+       WHERE vbeln = @lt_vbrk-vbeln
+       AND spart IN ('01','02').
+
+    SELECT vbeln,vbelv, vbtyp_v FROM vbfa INTO TABLE @DATA(lt_vbfa)
+      FOR ALL ENTRIES IN @lt_vbrp
+      WHERE vbeln = @lt_vbrp-vbeln
+      AND vbtyp_v = 'G'.
+
+    IF lt_vbfa IS NOT INITIAL.
+      SELECT vbeln, fplnr FROM fpla INTO TABLE @DATA(lt_fpla)
+         FOR ALL ENTRIES IN @lt_vbfa
+         WHERE vbeln = @lt_vbfa-vbelv.
+
+      SELECT fplnr,tetxt,fakwr FROM fplt INTO TABLE @DATA(lt_fplt)
+            FOR ALL ENTRIES IN @lt_fpla
+            WHERE fplnr =  @lt_fpla-fplnr
+            AND fkdat IN @s_fkdat.
+
+      SELECT * FROM tvtbt INTO TABLE @DATA(lt_tvtbt)
+            FOR ALL ENTRIES IN @lt_fplt
+            WHERE tetbe = @lt_fplt-tetxt
+            AND spras = 'E'.
+
+      """ Logic use for inter branch
+      SELECT vbeln FROM zinv_against_con INTO TABLE @DATA(lt_zinv_against_con)
+            WHERE checkbox NE 'X'.
+
+      SELECT vbeln,fkdat,netwr FROM vbrk INTO TABLE @DATA(lt_vbrk_ib)
+        FOR ALL ENTRIES IN @lt_zinv_against_con
+        WHERE vbeln = @lt_zinv_against_con-vbeln.
+
+      """ Logic use for inter branch
+
+      SELECT vbeln, zcategory,zproduct,ztype FROM vbap INTO TABLE @DATA(lt_vbap)
+          FOR ALL ENTRIES IN @lt_vbfa
+          WHERE vbeln = @lt_vbfa-vbeln.
+
+    ENDIF.
+  ENDIF.
+
+**  "2nd row logic depends on monthly and yearly
+**  SELECT SINGLE KTX FROM T247 INTO MONTH_NAME WHERE SPRAS = SY-LANGU AND MNR = SY-DATUM+4(2).
+**  CONCATENATE MONTH_NAME SY-DATUM+0(4) INTO LV_MONTH SEPARATED BY '-'.
+**  LS_EXCEL1-AMT_LAKH_MON = LV_MONTH.   " current month name and year
+
+**  CONCATENATE SY-DATUM+6(2) 'days' INTO AVG_DAY SEPARATED BY '/'.
+**  LS_EXCEL1-AVG_DAY = AVG_DAY.         "avg day calculate
+**  LS_EXCEL1-AMT_LAKH_YEAR = 'YTD'.           "Yearly
+**  APPEND LS_EXCEL1 TO LT_EXCEL1.
+**  CLEAR LS_EXCEL1.
+
+**  APPEND LS_EXCEL1 TO LT_EXCEL1.
+**  CLEAR LS_EXCEL1.
+  ls_excel1-sales_month = 'WCT - Execution Sales'.
+  APPEND ls_excel1 TO lt_excel1.
+  CLEAR ls_excel1.
+*  LS_EXCEL1-SALES_MONTH = 'WCT-Execution (Installation Works)'.
+  ls_excel1-sales_month = 'Installation'.
+  APPEND ls_excel1 TO lt_excel1.
+  CLEAR ls_excel1.
+*  LS_EXCEL1-SALES_MONTH = 'WCT-Advance'.
+  ls_excel1-sales_month = 'Advance'.
+  APPEND ls_excel1 TO lt_excel1.
+  CLEAR ls_excel1.
+  ls_excel1-sales_month = 'Handover'.
+  APPEND ls_excel1 TO lt_excel1.
+  CLEAR ls_excel1.
+  ls_excel1-sales_month = 'WCT-Civil Works'.
+  APPEND ls_excel1 TO lt_excel1.
+  CLEAR ls_excel1.
+  ls_excel1-sales_month = 'Export & SEZ -Supply'.
+  APPEND ls_excel1 TO lt_excel1.
+  CLEAR ls_excel1.
+  ls_excel1-sales_month = 'Export & SEZ -Installation'.
+  APPEND ls_excel1 TO lt_excel1.
+  CLEAR ls_excel1.
+  ls_excel1-sales_month = 'AMC & Spare Parts'.
+  APPEND ls_excel1 TO lt_excel1.
+  CLEAR ls_excel1.
+  ls_excel1-sales_month = 'Total (A)'.
+  APPEND ls_excel1 TO lt_excel1.
+  CLEAR ls_excel1.
+  ls_excel1-sales_month = 'Inter-Branch (B)'.
+  APPEND ls_excel1 TO lt_excel1.
+  CLEAR ls_excel1.
+  ls_excel1-sales_month = 'Gross Total (A+B)'.
+  APPEND ls_excel1 TO lt_excel1.
+  CLEAR ls_excel1.
+
+  DATA : avg_date TYPE char2.
+  DATA : avg_amount TYPE vbrk-netwr.
+  DATA : lv_fplnr TYPE fpla-fplnr.
+
+
+  LOOP AT lt_vbrk INTO DATA(ls_vbrk).
+
+    IF ls_vbrk-vkorg = '1100'.  "1100"01
+
+      READ TABLE lt_vbrp INTO DATA(ls_vbrp) WITH KEY vbeln = ls_vbrk-vbeln spart = '01'.
+      IF sy-subrc = 0.
+        READ TABLE lt_vbfa INTO DATA(ls_vbfa) WITH KEY vbeln = ls_vbrp-vbeln.
+        IF sy-subrc = 0.
+          READ TABLE lt_fpla INTO DATA(ls_fpla) WITH KEY vbeln = ls_vbfa-vbelv.
+          IF sy-subrc = 0.
+
+            LOOP AT lt_fplt INTO DATA(ls_fplt) WHERE fplnr =  ls_fpla-fplnr.
+              lv_fplnr = ls_fpla-fplnr.
+              READ TABLE lt_tvtbt INTO DATA(ls_tvtbt) WITH KEY tetbe = ls_fplt-tetxt.
+              IF sy-subrc = 0.
+                LOOP AT lt_excel1 INTO ls_excel1 WHERE sales_month = ls_tvtbt-tebez.
+
+                  IF ls_excel1-sales_month = ls_tvtbt-tebez.
+                    IF ls_vbrk-fkdat BETWEEN start_date AND end_date.   " Monthly calculate
+*                      LS_EXCEL1-AMT_LAKH_MON =  LS_FPLT-FAKWR.
+                      ls_excel1-amt_lakh_mon = ls_excel1-amt_lakh_mon + ls_fplt-fakwr.
+
+                      IF ls_excel1-amt_lakh_mon IS NOT INITIAL.   " logic for avg per day count
+                        avg_date = sy-datum+6(2).
+                        avg_amount = ls_excel1-amt_lakh_mon / avg_date.
+                        ls_excel1-avg_day = avg_amount.
+                      ENDIF.
+                      MODIFY lt_excel1 FROM ls_excel1 TRANSPORTING amt_lakh_mon avg_day.
+                    ENDIF.
+
+                    IF ls_vbrk-fkdat BETWEEN start_date_y AND end_date_y.   " Yearly calculate
+*                      LS_EXCEL1-AMT_LAKH_YEAR =  LS_FPLT-FAKWR.
+                      ls_excel1-amt_lakh_year = ls_excel1-amt_lakh_year + ls_fplt-fakwr.
+                      MODIFY lt_excel1 FROM ls_excel1 TRANSPORTING amt_lakh_year.
+                    ENDIF.
+
+                  ENDIF.
+                  CLEAR : avg_date,avg_amount,ls_excel1,ls_tvtbt,ls_fplt.
+                ENDLOOP.
+              ENDIF.
+              CLEAR: ls_fplt.
+            ENDLOOP.
+
+          ENDIF.
+        ENDIF.
+      ENDIF.
+      LOOP AT lt_fpla INTO DATA(ls_fpla_del).
+        IF ls_fpla-fplnr = ls_fpla_del-fplnr.
+          DELETE lt_fpla WHERE fplnr = ls_fpla-fplnr.
+        ENDIF.
+      ENDLOOP.
+      CLEAR : avg_date,avg_amount,ls_excel1,ls_fpla,ls_vbfa,ls_vbrk,lv_fplnr.
+
+*    ENDIF.
+*  ENDLOOP.
+*
+    ELSEIF ls_vbrk-vkorg = '1200'.   "1200"01
+*
+      READ TABLE lt_vbrp INTO DATA(ls_vbrp45) WITH KEY vbeln = ls_vbrk-vbeln spart = '01'.
+      IF sy-subrc = 0.
+        READ TABLE lt_vbfa INTO DATA(ls_vbfa45) WITH KEY vbeln = ls_vbrp45-vbeln.
+        IF sy-subrc = 0.
+          READ TABLE lt_fpla INTO DATA(ls_fpla45) WITH KEY vbeln = ls_vbfa45-vbelv.
+          IF sy-subrc = 0.
+
+            LOOP AT lt_fplt INTO DATA(ls_fplt45) WHERE fplnr =  ls_fpla45-fplnr.
+              lv_fplnr = ls_fpla-fplnr.
+              READ TABLE lt_tvtbt INTO DATA(ls_tvtbt45) WITH KEY tetbe = ls_fplt45-tetxt.
+              IF sy-subrc = 0.
+                LOOP AT lt_excel1 INTO ls_excel1 WHERE sales_month = ls_tvtbt45-tebez.
+
+                  IF ls_excel1-sales_month = ls_tvtbt-tebez.
+                    IF ls_vbrk-fkdat BETWEEN start_date AND end_date.   " Monthly calculate
+*                      LS_EXCEL1-AMT_LAKH_MON =  LS_FPLT-FAKWR.
+                      ls_excel1-amt_lakh_mon = ls_excel1-amt_lakh_mon + ls_fplt-fakwr.
+
+                      IF ls_excel1-amt_lakh_mon IS NOT INITIAL.   " logic for avg per day count
+                        avg_date = sy-datum+6(2).
+                        avg_amount = ls_excel1-amt_lakh_mon / avg_date.
+                        ls_excel1-avg_day = avg_amount.
+                      ENDIF.
+                      MODIFY lt_excel1 FROM ls_excel1 TRANSPORTING amt_lakh_mon avg_day.
+                    ENDIF.
+
+                    IF ls_vbrk-fkdat BETWEEN start_date_y AND end_date_y.   " Yearly calculate
+*                      LS_EXCEL1-AMT_LAKH_YEAR =  LS_FPLT-FAKWR.
+                      ls_excel1-amt_lakh_year = ls_excel1-amt_lakh_year + ls_fplt-fakwr.
+                      MODIFY lt_excel1 FROM ls_excel1 TRANSPORTING amt_lakh_year.
+                    ENDIF.
+
+                  ENDIF.
+                  CLEAR : avg_date,avg_amount,ls_excel1,ls_tvtbt,ls_fplt.
+                ENDLOOP.
+              ENDIF.
+              CLEAR: ls_fplt.
+            ENDLOOP.
+
+          ENDIF.
+        ENDIF.
+      ENDIF.
+      LOOP AT lt_fpla INTO DATA(ls_fpla_del45).
+        IF ls_fpla45-fplnr = ls_fpla_del45-fplnr.
+          DELETE lt_fpla WHERE fplnr = ls_fpla45-fplnr.
+        ENDIF.
+      ENDLOOP.
+      CLEAR : avg_date,avg_amount,ls_excel1,ls_fpla45,ls_vbfa45,ls_vbrk.
+
+    ELSEIF  ls_vbrk-vkorg = '1100'.    "1100 "02
+*
+
+      READ TABLE lt_vbrp INTO DATA(ls_vbrp46) WITH KEY vbeln = ls_vbrk-vbeln spart = '02'.
+      IF sy-subrc = 0.
+        READ TABLE lt_vbfa INTO DATA(ls_vbfa46) WITH KEY vbeln = ls_vbrp46-vbeln.
+        IF sy-subrc = 0.
+          READ TABLE lt_fpla INTO DATA(ls_fpla46) WITH KEY vbeln = ls_vbfa46-vbelv.
+          IF sy-subrc = 0.
+
+            LOOP AT lt_fplt INTO DATA(ls_fplt46) WHERE fplnr =  ls_fpla46-fplnr.
+              lv_fplnr = ls_fpla-fplnr.
+              READ TABLE lt_tvtbt INTO DATA(ls_tvtbt46) WITH KEY tetbe = ls_fplt46-tetxt.
+              IF sy-subrc = 0.
+                LOOP AT lt_excel1 INTO ls_excel1 WHERE sales_month = ls_tvtbt46-tebez.
+
+                  IF ls_excel1-sales_month = ls_tvtbt-tebez.
+                    IF ls_vbrk-fkdat BETWEEN start_date AND end_date.   " Monthly calculate
+*                      LS_EXCEL1-AMT_LAKH_MON =  LS_FPLT-FAKWR.
+                      ls_excel1-amt_lakh_mon = ls_excel1-amt_lakh_mon + ls_fplt-fakwr.
+
+                      IF ls_excel1-amt_lakh_mon IS NOT INITIAL.   " logic for avg per day count
+                        avg_date = sy-datum+6(2).
+                        avg_amount = ls_excel1-amt_lakh_mon / avg_date.
+                        ls_excel1-avg_day = avg_amount.
+                      ENDIF.
+                      MODIFY lt_excel1 FROM ls_excel1 TRANSPORTING amt_lakh_mon avg_day.
+                    ENDIF.
+
+                    IF ls_vbrk-fkdat BETWEEN start_date_y AND end_date_y.   " Yearly calculate
+*                      LS_EXCEL1-AMT_LAKH_YEAR =  LS_FPLT-FAKWR.
+                      ls_excel1-amt_lakh_year = ls_excel1-amt_lakh_year + ls_fplt-fakwr.
+                      MODIFY lt_excel1 FROM ls_excel1 TRANSPORTING amt_lakh_year.
+                    ENDIF.
+
+                  ENDIF.
+                  CLEAR : avg_date,avg_amount,ls_excel1,ls_tvtbt,ls_fplt.
+                ENDLOOP.
+              ENDIF.
+              CLEAR: ls_fplt.
+            ENDLOOP.
+
+          ENDIF.
+        ENDIF.
+      ENDIF.
+      LOOP AT lt_fpla INTO DATA(ls_fpla_del46).
+        IF ls_fpla46-fplnr = ls_fpla_del46-fplnr.
+          DELETE lt_fpla WHERE fplnr = ls_fpla46-fplnr.
+        ENDIF.
+      ENDLOOP.
+      CLEAR : avg_date,avg_amount,ls_excel1,ls_fpla46,ls_vbfa46,ls_vbrk.
+
+    ELSEIF ls_vbrk-vkorg = '1200'.     "1200 "02
+**
+
+      READ TABLE lt_vbrp INTO DATA(ls_vbrp47) WITH KEY vbeln = ls_vbrk-vbeln spart = '02'.
+      IF sy-subrc = 0.
+        READ TABLE lt_vbfa INTO DATA(ls_vbfa47) WITH KEY vbeln = ls_vbrp47-vbeln.
+        IF sy-subrc = 0.
+          READ TABLE lt_fpla INTO DATA(ls_fpla47) WITH KEY vbeln = ls_vbfa47-vbelv.
+          IF sy-subrc = 0.
+
+            LOOP AT lt_fplt INTO DATA(ls_fplt47) WHERE fplnr =  ls_fpla46-fplnr.
+              lv_fplnr = ls_fpla-fplnr.
+              READ TABLE lt_tvtbt INTO DATA(ls_tvtbt47) WITH KEY tetbe = ls_fplt47-tetxt.
+              IF sy-subrc = 0.
+                LOOP AT lt_excel1 INTO ls_excel1 WHERE sales_month = ls_tvtbt47-tebez.
+
+                  IF ls_excel1-sales_month = ls_tvtbt-tebez.
+                    IF ls_vbrk-fkdat BETWEEN start_date AND end_date.   " Monthly calculate
+*                      LS_EXCEL1-AMT_LAKH_MON =  LS_FPLT-FAKWR.
+                      ls_excel1-amt_lakh_mon = ls_excel1-amt_lakh_mon + ls_fplt-fakwr.
+
+                      IF ls_excel1-amt_lakh_mon IS NOT INITIAL.   " logic for avg per day count
+                        avg_date = sy-datum+6(2).
+                        avg_amount = ls_excel1-amt_lakh_mon / avg_date.
+                        ls_excel1-avg_day = avg_amount.
+                      ENDIF.
+                      MODIFY lt_excel1 FROM ls_excel1 TRANSPORTING amt_lakh_mon avg_day.
+                    ENDIF.
+
+                    IF ls_vbrk-fkdat BETWEEN start_date_y AND end_date_y.   " Yearly calculate
+*                      LS_EXCEL1-AMT_LAKH_YEAR =  LS_FPLT-FAKWR.
+                      ls_excel1-amt_lakh_year = ls_excel1-amt_lakh_year + ls_fplt-fakwr.
+                      MODIFY lt_excel1 FROM ls_excel1 TRANSPORTING amt_lakh_year.
+                    ENDIF.
+
+                  ENDIF.
+                  CLEAR : avg_date,avg_amount,ls_excel1,ls_tvtbt,ls_fplt.
+                ENDLOOP.
+              ENDIF.
+              CLEAR: ls_fplt.
+            ENDLOOP.
+
+          ENDIF.
+        ENDIF.
+      ENDIF.
+      LOOP AT lt_fpla INTO DATA(ls_fpla_del47).
+        IF ls_fpla47-fplnr = ls_fpla_del47-fplnr.
+          DELETE lt_fpla WHERE fplnr = ls_fpla47-fplnr.
+        ENDIF.
+      ENDLOOP.
+      CLEAR : avg_date,avg_amount,ls_excel1,ls_fpla47,ls_vbfa47,ls_vbrk.
+*
+    ENDIF.
+  ENDLOOP.
+
+  """""""""""""" logic for total / interbranch / Gross Total  for  monthly column
+
+  DATA: total_amt_monthly TYPE vbrk-netwr.
+  DATA: g_total_amt_monthly TYPE vbrk-netwr.
+  DATA: total_avg_per_day TYPE vbrk-netwr.
+  DATA v1 TYPE vbrk-netwr.
+
+  LOOP AT lt_excel1 INTO ls_excel1.          " get logic total for amt in lakh monthly
+    IF ls_excel1-amt_lakh_mon IS NOT INITIAL.
+      total_amt_monthly  = total_amt_monthly + ls_excel1-amt_lakh_mon.
+    ENDIF.
+    IF ls_excel1-sales_month = 'Total (A)'.  " get logic total for amt in lakh monthly
+      ls_excel1-amt_lakh_mon = total_amt_monthly.
+*      V1 = TOTAL_AMT_MONTHLY.         " collect value for Gross total in V1
+      MODIFY lt_excel1 FROM ls_excel1 TRANSPORTING amt_lakh_mon .
+    ENDIF.
+    CLEAR ls_excel1.
+  ENDLOOP.
+
+  """"""""""""""logic for interbrach for monthly
+  DATA total_ib TYPE vbrk-netwr.
+  LOOP AT lt_vbrk_ib INTO DATA(ls_vbrk_ib).
+    IF ls_vbrk_ib-fkdat BETWEEN start_date AND end_date.
+      total_ib = total_ib + ls_vbrk_ib-netwr.
+    ENDIF.
+    CLEAR: ls_vbrk_ib.
+  ENDLOOP.
+  CLEAR : ls_excel1.
+  LOOP AT lt_excel1 INTO ls_excel1.
+    IF ls_excel1-sales_month = 'Inter-Branch (B)'.
+      ls_excel1-amt_lakh_mon = total_ib.
+      MODIFY lt_excel1 FROM ls_excel1 TRANSPORTING amt_lakh_mon.
+    ENDIF.
+    CLEAR : ls_excel1.
+  ENDLOOP.
+  """"""""""""""logic for interbrach for monthly
+  "Gross total - monthly
+  CLEAR: total_ib.
+  LOOP AT lt_excel1 INTO ls_excel1.
+    IF ls_excel1-sales_month = 'Inter-Branch (B)'.
+      total_ib = ls_excel1-amt_lakh_mon.
+    ENDIF.
+    IF ls_excel1-sales_month = 'Gross Total (A+B)'.
+      ls_excel1-amt_lakh_mon = total_amt_monthly + total_ib.
+      MODIFY lt_excel1 FROM ls_excel1 TRANSPORTING amt_lakh_mon.
+    ENDIF.
+    CLEAR : ls_excel1.
+  ENDLOOP.
+  """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+  " AVG per day
+  " get logic total for avg date
+  LOOP AT lt_excel1 INTO ls_excel1.
+    IF ls_excel1-avg_day IS NOT INITIAL.
+      total_avg_per_day = total_avg_per_day + ls_excel1-avg_day.
+    ENDIF.
+    IF ls_excel1-sales_month = 'Total (A)'.
+      ls_excel1-avg_day = total_avg_per_day.
+      MODIFY lt_excel1 FROM ls_excel1 TRANSPORTING avg_day .
+    ENDIF.
+    CLEAR : ls_excel1.
+  ENDLOOP.
+
+  """""""""""""""""""""""""""""""""""""""""""""""""""""
+  " Year Column
+  "get total for yearly
+  DATA: total_amt_yearly TYPE vbrk-netwr.
+  CLEAR v1.
+  LOOP AT lt_excel1 INTO ls_excel1.          " get logic total for amt in lakh yearly
+    IF ls_excel1-amt_lakh_year IS NOT INITIAL.
+      total_amt_yearly  = total_amt_yearly + ls_excel1-amt_lakh_year.
+    ENDIF.
+    IF ls_excel1-sales_month = 'Total (A)'.  " get logic total for amt in lakh yearly
+      ls_excel1-amt_lakh_year = total_amt_yearly.
+*      V1 = TOTAL_AMT_YEARLY.         " collect value for Gross total in V1
+      MODIFY lt_excel1 FROM ls_excel1 TRANSPORTING amt_lakh_year .
+    ENDIF.
+    CLEAR ls_excel1.
+  ENDLOOP.
+
+  """"""""""""""logic for interbrach for yearly but reuired monthly
+  DATA total_year_ib TYPE vbrk-netwr.
+  LOOP AT lt_vbrk_ib INTO DATA(ls_vbrk_ib1).
+    IF ls_vbrk_ib1-fkdat BETWEEN start_date AND end_date.
+      total_year_ib = total_year_ib + ls_vbrk_ib1-netwr.
+    ENDIF.
+    CLEAR : ls_excel1.
+  ENDLOOP.
+  LOOP AT lt_excel1 INTO ls_excel1.
+    IF ls_excel1-sales_month = 'Inter-Branch (B)'.
+      ls_excel1-amt_lakh_year = total_year_ib.
+      MODIFY lt_excel1 FROM ls_excel1 TRANSPORTING amt_lakh_year.
+    ENDIF.
+    CLEAR : ls_excel1.
+  ENDLOOP.
+  """"""""""""""logic for interbrach for monthly
+
+  "Gross total - monthly
+  LOOP AT lt_excel1 INTO ls_excel1.
+    IF ls_excel1-sales_month = 'Gross Total (A+B)'.
+      ls_excel1-amt_lakh_year = total_amt_yearly + total_year_ib.
+      MODIFY lt_excel1 FROM ls_excel1 TRANSPORTING amt_lakh_year.
+    ENDIF.
+    CLEAR : ls_excel1.
+  ENDLOOP.
+
+  """"""""""""""""""""""""""""""""""""""""""""""EOL of Summary report part-I """"""""""""""""""""""""""""""""""'
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form LAYOUT
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM layout .
+
+  PERFORM fcat USING :
+
+            'SALES_MONTH'                 'Particulars',
+            'AMT_LAKH_MON'                'Amount in Lakhs Monthly',
+            'AVG_DAY'                     'Avg.Per Day Billing',
+            'AMT_LAKH_YEAR'               'Amount in Lakhs Yearly'.
+
+  wa_lay_sales-colwidth_optimize = 'X'.
+  wa_lay_sales-zebra = 'X'.
+
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+    EXPORTING
+      i_callback_program = 'ZSD_WCT_SUMMARY'
+      is_layout          = wa_lay_sales
+      it_fieldcat        = it_fcat
+      i_default          = 'X'
+      i_save             = 'A'
+    TABLES
+      t_outtab           = lt_excel1.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form FCAT
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*&      --> P_
+*&      --> P_
+*&---------------------------------------------------------------------*
+FORM fcat USING p_fname TYPE char40
+      p_text TYPE char100.
+
+  wa_fcat-fieldname = p_fname.
+  wa_fcat-seltext_l = p_text.
+
+*  W_FCAT-DO_SUM = 'X',.
+  APPEND wa_fcat TO it_fcat.
+  CLEAR wa_fcat.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form SEND_MAIL
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM send_mail .
+
+  DATA : v_lines_bin   TYPE i.   "no of lines for excel data
+  DATA : v_lines_bin_cat TYPE i, "no of lines for excel data
+         message_lines   TYPE i, "no of lines for body of mail
+         v_mailaddr      TYPE  adr6-smtp_addr. " storing email id
+
+  " class declaration
+  CLASS: cl_abap_char_utilities DEFINITION LOAD.
+
+  " internal table declaration
+  DATA: it_objpack_cat    TYPE STANDARD TABLE OF  sopcklsti1.
+  DATA: it_objpack      TYPE STANDARD TABLE OF  sopcklsti1,
+        imessage        TYPE STANDARD TABLE OF  solisti1,
+        it_reclist      TYPE STANDARD TABLE OF  somlreci1,
+        it_objbin_bill  TYPE STANDARD TABLE OF  solisti1,
+        it_objbin_total TYPE STANDARD TABLE OF  solisti1,
+        it_objbin       TYPE STANDARD TABLE OF  solisti1,
+        c_tab           TYPE c VALUE cl_abap_char_utilities=>horizontal_tab,
+        c_ret           TYPE c VALUE cl_abap_char_utilities=>cr_lf,
+
+        "work area declaration
+        wa_objbin       LIKE LINE OF it_objbin,
+        wa_imessage     TYPE solisti1,
+        wa_it_reclist   TYPE  somlreci1,
+        w_doc_chng      TYPE  sodocchgi1,
+        wa_it_orders    TYPE sfc_poco,
+        wa_it_objpack   TYPE  sopcklsti1,
+        lines           TYPE i.
+
+  DATA: lv_vbeln TYPE char15.
+  DATA: lv_fkdat TYPE char10.
+  DATA: lv_year  TYPE char4.
+  DATA: lv_branch  TYPE char20.
+  DATA: lv_dc_no  TYPE char20.
+  DATA: lv_bas_val  TYPE char30.
+  DATA: lv_site  TYPE char50.
+  DATA lv_mon TYPE string.
+  DATA lv_year1 TYPE string.
+  DATA lv_day1 TYPE string.
+  DATA lv_mon_data TYPE string.
+  DATA lv_year_data TYPE string.
+
+  "" summary body mail table
+  CLEAR wa_imessage.
+  wa_imessage = 'Dear Team,'." RESPECTING BLANKS .
+  APPEND wa_imessage TO imessage.
+
+  CLEAR wa_imessage.
+  CONCATENATE '<p>' 'Please find attachment of Summary Reports & Category wise sales summary Reports.' '</p>' INTO wa_imessage."
+  APPEND wa_imessage TO imessage.
+
+  CLEAR wa_imessage.
+  wa_imessage = '<hr>'.
+  APPEND wa_imessage TO imessage.
+
+  CLEAR wa_imessage.
+  wa_imessage = '<style>'.
+  APPEND wa_imessage TO imessage.
+
+  CLEAR wa_imessage.
+  wa_imessage = 'table, th, td {'.  " table border start
+  APPEND wa_imessage TO imessage.
+
+  CLEAR wa_imessage.
+  wa_imessage = 'border: 1px solid black;'.
+  APPEND wa_imessage TO imessage.
+
+  CLEAR wa_imessage.
+  wa_imessage = 'border-collapse: collapse; }'.
+  APPEND wa_imessage TO imessage.
+
+  CLEAR wa_imessage.
+  wa_imessage = '</style>'.
+  APPEND wa_imessage TO imessage.
+
+  CLEAR wa_imessage.
+  wa_imessage = '<body>'.
+  APPEND wa_imessage TO imessage.
+
+  CLEAR wa_imessage.
+  wa_imessage = '<table style="width:70%">'.
+*  WA_IMESSAGE = '<table style="border-collapse:">'.
+  APPEND wa_imessage TO imessage.
+  CLEAR wa_imessage.
+  wa_imessage = '<tr>'.
+  APPEND wa_imessage TO imessage.
+  CLEAR wa_imessage.
+  wa_imessage = '<th>Particulars</th>'.
+  APPEND wa_imessage TO imessage.
+  CLEAR wa_imessage.
+  wa_imessage = '<th>Amount in Lakhs Monthly</th>'.
+  APPEND wa_imessage TO imessage.
+  CLEAR wa_imessage.
+  wa_imessage = '<th>Avg.Per Day Billing</th>'.
+  APPEND wa_imessage TO imessage.
+  CLEAR wa_imessage.
+  wa_imessage = '<th>Amount in Lakhs Yearly</th>'.
+  APPEND wa_imessage TO imessage.
+  CLEAR wa_imessage.
+  wa_imessage = '</tr>'.
+  APPEND wa_imessage TO imessage.
+
+  LOOP AT lt_excel1 INTO ls_excel1.
+
+    lv_mon = ls_excel1-amt_lakh_mon.
+    lv_year1 = ls_excel1-amt_lakh_year.
+    lv_day1 = ls_excel1-avg_day.
+    CONDENSE : lv_mon, lv_year1.
+
+    CLEAR wa_imessage.
+    wa_imessage = '<tr>'.
+    APPEND wa_imessage TO imessage.
+
+    CLEAR wa_imessage.
+    CONCATENATE '<td>' ls_excel1-sales_month '</td>' INTO wa_imessage.
+    APPEND wa_imessage TO imessage.
+
+    CLEAR wa_imessage.
+    CONCATENATE '<td>' lv_mon '</td>' INTO wa_imessage.
+    APPEND wa_imessage TO imessage.
+
+    CLEAR wa_imessage.
+    CONCATENATE '<td>' lv_day1 '</td>' INTO wa_imessage.
+    APPEND wa_imessage TO imessage.
+
+    CLEAR wa_imessage.
+    CONCATENATE '<td>' lv_year1 '</td>' INTO wa_imessage.
+    APPEND wa_imessage TO imessage.
+
+    CLEAR wa_imessage.
+    wa_imessage = '</tr>'.
+    APPEND wa_imessage TO imessage.
+
+  ENDLOOP.
+**
+  CLEAR wa_imessage.
+  wa_imessage = '</table></body>'.           "table border close
+  APPEND wa_imessage TO imessage.
+  "" suummary bodymail table
+
+
+  """ Category bodymail table
+  CLEAR wa_imessage.
+  wa_imessage = '<hr>'.
+  APPEND wa_imessage TO imessage.
+
+  CLEAR wa_imessage.
+  CONCATENATE '<p>' 'Category wise sales summary Reports.' '</p>' INTO wa_imessage."
+  APPEND wa_imessage TO imessage.
+
+  CLEAR wa_imessage.
+  wa_imessage = '<head>'.
+  APPEND wa_imessage TO imessage.
+
+  CLEAR wa_imessage.
+  wa_imessage = '<style>'.
+  APPEND wa_imessage TO imessage.
+  CLEAR wa_imessage.
+  wa_imessage = 'table, th, td {'.  " table border start
+  APPEND wa_imessage TO imessage.
+  CLEAR wa_imessage.
+  wa_imessage = 'border: 1px solid black;'.
+  APPEND wa_imessage TO imessage.
+  CLEAR wa_imessage.
+  wa_imessage = 'border-collapse: collapse; }'.
+  APPEND wa_imessage TO imessage.
+  CLEAR wa_imessage.
+  wa_imessage = '</style>'.
+  APPEND wa_imessage TO imessage.
+  CLEAR wa_imessage.
+  wa_imessage = '<body>'.
+  APPEND wa_imessage TO imessage.
+  CLEAR wa_imessage.
+  wa_imessage = '<table style="width:70%">'.
+*  WA_IMESSAGE = '<table style="border-collapse:collapse;">'.
+  APPEND wa_imessage TO imessage.
+  CLEAR wa_imessage.
+  wa_imessage = '<tr>'.
+  APPEND wa_imessage TO imessage.
+  CLEAR wa_imessage.
+*  wa_imessage = '<th>Category</th>'.
+  CONCATENATE '<p>' '<th>Category</th>' '</p>' INTO wa_imessage."
+
+  APPEND wa_imessage TO imessage.
+  CLEAR wa_imessage.
+  wa_imessage = '<th>Product Line</th>'.
+  APPEND wa_imessage TO imessage.
+  CLEAR wa_imessage.
+  wa_imessage = '<th>Amount in Lakhs (MTD)</th>'.
+  APPEND wa_imessage TO imessage.
+  CLEAR wa_imessage.
+  wa_imessage = '<th>Amount in Lakhs (YTD)</th>'.
+  APPEND wa_imessage TO imessage.
+  CLEAR wa_imessage.
+  wa_imessage = '</tr>'.
+  APPEND wa_imessage TO imessage.
+
+  LOOP AT lt_excel2 INTO ls_excel2.
+
+    lv_mon_data = ls_excel2-amt_lakh_mon.
+    lv_year_data = ls_excel2-amt_lakh_year.
+
+    CLEAR wa_imessage.
+    wa_imessage = '<tr>'.
+    APPEND wa_imessage TO imessage.
+
+    CLEAR wa_imessage.
+    CONCATENATE '<td>' ls_excel2-category '</td>' INTO wa_imessage.
+    APPEND wa_imessage TO imessage.
+
+    CLEAR wa_imessage.
+    CONCATENATE '<td>' ls_excel2-product_line '</td>' INTO wa_imessage.
+    APPEND wa_imessage TO imessage.
+
+    CLEAR wa_imessage.
+    CONCATENATE '<td>' lv_mon_data '</td>' INTO wa_imessage.
+    APPEND wa_imessage TO imessage.
+
+    CLEAR wa_imessage.
+    CONCATENATE '<td>' lv_year_data '</td>' INTO wa_imessage.
+    APPEND wa_imessage TO imessage.
+
+    CLEAR wa_imessage.
+    wa_imessage = '</tr>'.
+    APPEND wa_imessage TO imessage.
+
+  ENDLOOP.
+
+  CLEAR wa_imessage.
+  wa_imessage = '</table></body>'.           "table border close
+  APPEND wa_imessage TO imessage.
+  """ Category bodymail table
+
+
+  "document information
+  w_doc_chng-obj_name = 'Excel'.
+  w_doc_chng-obj_descr = 'Excel For Sales Summary'.
+  DESCRIBE TABLE imessage LINES lines.            " ++added by shaik
+  READ TABLE imessage INTO wa_imessage INDEX lines.
+  w_doc_chng-doc_size = ( lines - 1 ) * 255 + strlen( wa_imessage ).
+
+  "  (+) boc by shaik
+  " pack the data as RAW
+  CLEAR wa_it_objpack-transf_bin.        "Obj. to be transported not in binary form
+  wa_it_objpack-head_start = 1.          "Start line of object header in transport packet
+  wa_it_objpack-head_num = 0.            "Number of lines of an object header in object packet
+  wa_it_objpack-body_start = 1.          "Start line of object contents in an object packet
+  wa_it_objpack-body_num = lines.        "Number of lines of the mail body
+  wa_it_objpack-doc_type = 'HTML'.
+  APPEND wa_it_objpack TO it_objpack.
+  CLEAR wa_it_objpack .
+  "  (+) eoc by shaik
+
+  CONCATENATE 'Invoice No'
+              'Billing date'
+              'Financial Year'
+              'Billing to branch'
+              'Bill/DC No.'
+              'Basic Value'
+              'Site'
+             INTO wa_objbin SEPARATED BY c_tab.
+*  APPEND WA_OBJBIN TO IT_OBJBIN.
+  CONCATENATE c_ret wa_objbin INTO wa_objbin.
+  APPEND wa_objbin TO it_objbin.
+
+
+  DATA: lv_vbeln23 TYPE char15.
+  DATA: lv_fkdat23 TYPE char10.
+  DATA: lv_year23  TYPE char4.
+  DATA: lv_branch23  TYPE char20.
+*  DATA: LV_DC_NO  TYPE CHAR20.
+  DATA: lv_bas_val323  TYPE char30.
+  DATA: lv_site23  TYPE char50.
+  DATA lv_basic_val23 TYPE string.
+  DATA lv_xblnr23 TYPE string.
+  DATA lv_kunag23 TYPE string.
+  DATA lv_name23 TYPE string.
+
+  LOOP AT lt_interbranch INTO ls_interbranch.
+
+    lv_vbeln23 = ls_interbranch-vbeln.
+    lv_fkdat23 = ls_interbranch-fkdat.
+    lv_year23 = ls_interbranch-year .
+    lv_kunag23 = ls_interbranch-kunag .
+    lv_xblnr23 = ls_interbranch-xblnr .
+    lv_basic_val23 = ls_interbranch-netwr.
+    lv_name23 = ls_interbranch-name_org4.
+
+    CONDENSE : lv_vbeln23,
+               lv_fkdat23,
+               lv_year23 ,
+               lv_kunag23,
+               lv_xblnr23,
+               lv_basic_val23,
+               lv_name23.
+
+    CONCATENATE lv_vbeln23 lv_fkdat23 lv_year23 lv_kunag23 lv_xblnr23 lv_basic_val23 lv_name23
+*    CONCATENATE LS_EXCEL-VBELN LS_EXCEL-FKDAT LS_EXCEL-YEAR "LS_EXCEL-KUNAG LS_EXCEL-XBLNR
+                 "LS_EXCEL-NAME_ORG4 "LS_EXCEL-NETWR
+               INTO wa_objbin SEPARATED BY c_tab.
+
+    CONCATENATE c_ret wa_objbin INTO wa_objbin.
+    APPEND wa_objbin TO it_objbin.
+
+
+  ENDLOOP.
+  IF sy-subrc EQ 0 AND
+     NOT it_objbin IS INITIAL.
+    LOOP AT it_objbin INTO wa_objbin.
+      APPEND wa_objbin TO it_objbin_total.
+    ENDLOOP.
+  ENDIF.
+
+
+  DESCRIBE TABLE it_objbin LINES v_lines_bin.   " no of lines for excel data
+  DESCRIBE TABLE imessage LINES lines.
+
+  DATA lv_start TYPE i VALUE 1.
+  """"""""" this is summary file """"""""""""""""""""""""""""
+  " pack the data as excel
+  wa_it_objpack-transf_bin = 'X'.
+  wa_it_objpack-head_start = 1.
+  wa_it_objpack-head_num = 1.
+  wa_it_objpack-body_start = lv_start.   
+  wa_it_objpack-body_num = v_lines_bin.
+  wa_it_objpack-doc_type = 'XLS'.
+  wa_it_objpack-obj_name = 'Shaik1'.
+  " attachment name
+  CONCATENATE 'Shaik1' '.XLS' INTO wa_it_objpack-obj_descr.
+  wa_it_objpack-doc_size = v_lines_bin * 255.
+  APPEND wa_it_objpack TO it_objpack.
+  """"""""" this is summary file """"""""""""""""""""""""""""
+
+  """""""""""""""" billwsie attachment code """""""""""""
+  CONCATENATE 'CONTRACT NO'
+              'INT.REF.NO'
+              'ISSUING STATE'
+              'REGION'
+              'CUSTOMER TYPE'
+              'TAX INVOICE NO'
+              'DATE'
+              'MONTH'
+              'SALES TYPE'
+              'CUSTOMER'
+              'BASIC AMOUNT'
+              'TOTAL AMT INCL GST'
+              'CONCERNED PERSON'
+              'WORK1'
+              'CATEGORY 1'
+              'CATEGORY 2'
+              'CATEGORY 3'
+              'CATEGORY 4'
+              'CATEGORY 5'
+              'CATEGORY 6'
+              'TOTAL'
+              'CATEGORY1'
+              'MONTH1'
+              'TAX AMOUNT'
+           INTO wa_objbin SEPARATED BY c_tab.
+
+  CONCATENATE c_ret wa_objbin INTO wa_objbin.
+*  APPEND WA_OBJBIN TO IT_OBJBIN.
+  APPEND wa_objbin TO it_objbin_bill.
+
+  DATA : lv_netwr     TYPE string.
+  DATA : lv_tot_amt   TYPE string.
+  DATA : lv_category1 TYPE string.
+  DATA : lv_category2 TYPE string.
+  DATA : lv_category3 TYPE string.
+  DATA : lv_category4 TYPE string.
+  DATA : lv_category5 TYPE string.
+  DATA : lv_category6 TYPE string.
+  DATA : lv_total     TYPE string.
+  DATA : lv_tax_amt   TYPE string.
+
+  LOOP AT lt_billwise INTO ls_billwise.
+
+    lv_netwr    = ls_billwise-netwr.
+    lv_tot_amt  = ls_billwise-tot_amt.
+    lv_category1 = ls_billwise-category1.
+    lv_category2 = ls_billwise-category2.
+    lv_category3 = ls_billwise-category3.
+    lv_category4 = ls_billwise-category4.
+    lv_category5 = ls_billwise-category5.
+    lv_category6 = ls_billwise-category6.
+    lv_total    = ls_billwise-total.
+    lv_tax_amt  = ls_billwise-tax_amt.
+
+    CONDENSE : lv_netwr    ,
+               lv_tot_amt  ,
+               lv_category1,
+               lv_category2,
+               lv_category3,
+               lv_category4,
+               lv_category5,
+               lv_category6,
+               lv_total   ,
+               lv_tax_amt .
+    CONCATENATE ls_billwise-con_no ls_billwise-vbeln ls_billwise-regio ls_billwise-bzirk ls_billwise-cust_type
+                ls_billwise-xblnr
+                ls_billwise-fkdat ls_billwise-mon_year ls_billwise-sales_type ls_billwise-cust_name
+                lv_netwr lv_tot_amt ls_billwise-con_per ls_billwise-work
+                lv_category1 lv_category2 lv_category3 lv_category4
+                lv_category5 lv_category6 lv_total ls_billwise-sales_type1
+                ls_billwise-mon_year1 lv_tax_amt
+               INTO wa_objbin SEPARATED BY c_tab.
+    CONCATENATE c_ret wa_objbin INTO wa_objbin.
+*    APPEND WA_OBJBIN TO IT_OBJBIN.
+    APPEND wa_objbin TO it_objbin_bill.
+
+  ENDLOOP.
+  IF sy-subrc EQ 0.
+    LOOP AT it_objbin_bill TO wa_objbin .
+      APPEND wa_objbin TO it_objbin_total.
+    ENDLOOP.
+  ENDIF.
+
+  CLEAR v_lines_bin.
+  DESCRIBE TABLE it_objbin_bill LINES v_lines_bin.   " no of lines for excel data
+*  APPEND LINES OF IT_OBJBIN_BILL to IT_OBJBIN.
+  " pack the data as excel
+  lv_start = lv_start + v_lines_bin.
+  wa_it_objpack-transf_bin = 'X'.
+  wa_it_objpack-head_start = 1.
+  wa_it_objpack-head_num = 1.
+  wa_it_objpack-body_start = lv_start.
+  wa_it_objpack-body_num = v_lines_bin.
+  wa_it_objpack-doc_type = 'XLS'.
+  wa_it_objpack-obj_name = 'Shaik2'.
+
+  " attachment name
+  CONCATENATE 'Shaik2' '.XLS' INTO wa_it_objpack-obj_descr.
+  wa_it_objpack-doc_size = v_lines_bin * 255.
+  APPEND wa_it_objpack TO it_objpack.
+
+  """""""""""""""" billwsie attachment code """""""""""""
+* E-MAIL RECEIVERS.
+  SELECT * FROM tvarvc
+   INTO TABLE @DATA(it_rece)
+    WHERE name = 'ZSD_WCT_SUMMARY'.
+
+  LOOP AT it_rece INTO DATA(wa_rece).
+*    IF SY-TABIX = 1.
+    CLEAR wa_it_reclist.
+    wa_it_reclist-receiver =  wa_rece-low.
+    wa_it_reclist-express =  'X'.
+    wa_it_reclist-rec_type = 'U'.
+    wa_it_reclist-com_type = 'INT'.
+    wa_it_reclist-notif_del = 'X'.
+    wa_it_reclist-notif_ndel = 'X'.
+    APPEND wa_it_reclist TO it_reclist.
+  ENDLOOP.
+
+  IF it_reclist[] IS NOT INITIAL.
+
+    CALL FUNCTION 'SO_NEW_DOCUMENT_ATT_SEND_API1'
+      EXPORTING
+        document_data              = w_doc_chng
+        put_in_outbox              = 'X'
+        commit_work                = 'X'
+      TABLES
+        packing_list               = it_objpack
+*       OBJECT_HEADER              =
+        contents_bin               = it_objbin_total
+        contents_txt               = imessage
+        receivers                  = it_reclist
+      EXCEPTIONS
+        too_many_receivers         = 1
+        document_not_sent          = 2
+        document_type_not_exist    = 3
+        operation_no_authorization = 4
+        parameter_error            = 5
+        x_error                    = 6
+        enqueue_error              = 7
+        OTHERS                     = 8.
+
+    COMMIT WORK.
+    IF sy-subrc = 0.
+*      SUBMIT RSCONN01 WITH MODE EQ 'INT' AND RETURN.
+* MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+*         WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+    ENDIF.
+  ENDIF.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form GET_DATA_CAT
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM get_data_cat.
+  " Required FM for Monthly get for netwr
+  CALL FUNCTION 'HR_JP_MONTH_BEGIN_END_DATE'
+    EXPORTING
+      iv_date             = sy-datum
+    IMPORTING
+      ev_month_begin_date = start_date
+      ev_month_end_date   = end_date.
+
+  IF sy-datum+4(2) = '01' OR sy-datum+4(2) = '02' OR sy-datum+4(2) = '03'. " het logic for yearly date
+    year_y = sy-datum+0(4) - 1.
+    CALL FUNCTION 'FIRST_AND_LAST_DAY_IN_YEAR_GET'
+      EXPORTING
+        i_gjahr     = year_y
+        i_periv     = 'V3'
+      IMPORTING
+        e_first_day = start_date_y
+        e_last_day  = end_date_y.
+    IF sy-subrc <> 0.
+* Implement suitable error handling here
+    ENDIF.
+  ELSE.
+    year_y = sy-datum+0(4).
+    CALL FUNCTION 'FIRST_AND_LAST_DAY_IN_YEAR_GET'
+      EXPORTING
+        i_gjahr     = year_y
+        i_periv     = 'V3'
+      IMPORTING
+        e_first_day = start_date_y
+        e_last_day  = end_date_y.
+    IF sy-subrc <> 0.
+* Implement suitable error handling here
+    ENDIF.
+  ENDIF.
+
+  IF s_fkdat IS NOT INITIAL.
+
+    SELECT * FROM vbrk INTO TABLE @DATA(lt_vbrk)
+      WHERE fkdat IN @s_fkdat
+*      AND FKART = 'ZPIR'
+      AND fkart = 'ZPCR'
+*      AND FKTYP = 'D'
+      AND vtweg = '10'
+      AND vkorg IN ('1100','1200')
+      AND fksto NE 'X'.
+
+  ELSE.
+
+    SELECT * FROM vbrk INTO TABLE @DATA(lt_vbrk1)
+*      WHERE FKART = 'ZPIR'
+      WHERE fkart = 'ZPCR'
+*      AND FKTYP = 'D'
+      AND vtweg = '10'
+      AND vkorg IN ('1100','1200')
+      AND fksto NE 'X'.
+
+    lt_vbrk = lt_vbrk1.
+
+  ENDIF.
+
+
+  IF lt_vbrk IS NOT INITIAL.
+    SELECT vbeln, spart FROM vbrp INTO TABLE @DATA(lt_vbrp)
+       FOR ALL ENTRIES IN @lt_vbrk
+       WHERE vbeln = @lt_vbrk-vbeln.
+
+    SELECT vbeln,vbelv, vbtyp_v FROM vbfa INTO TABLE @DATA(lt_vbfa)
+      FOR ALL ENTRIES IN @lt_vbrp
+      WHERE vbeln = @lt_vbrp-vbeln
+      AND vbtyp_v = 'G'.
+
+    IF lt_vbfa IS NOT INITIAL.
+      SELECT vbeln, fplnr FROM fpla INTO TABLE @DATA(lt_fpla)
+         FOR ALL ENTRIES IN @lt_vbfa
+         WHERE vbeln = @lt_vbfa-vbelv.
+
+      SELECT fplnr,tetxt FROM fplt INTO TABLE @DATA(lt_fplt)
+            FOR ALL ENTRIES IN @lt_fpla
+            WHERE fplnr =  @lt_fpla-fplnr
+            AND fkdat IN @s_fkdat.
+
+      SELECT * FROM tvtbt INTO TABLE @DATA(lt_tvtbt)
+            FOR ALL ENTRIES IN @lt_fplt
+            WHERE tetbe = @lt_fplt-tetxt
+            AND spras = 'E'.
+
+      """ Logic use for inter branch SOC
+      SELECT vbeln FROM zinv_against_con INTO TABLE @DATA(lt_zinv_against_con)
+            WHERE checkbox NE 'X'.
+
+      SELECT vbeln,fkdat,netwr FROM vbrk INTO TABLE @DATA(lt_vbrk_ib)
+        FOR ALL ENTRIES IN @lt_zinv_against_con
+        WHERE vbeln = @lt_zinv_against_con-vbeln.
+
+      """ Logic use for inter branch EOC
+
+      SELECT vbeln, zcategory,zproduct,ztype FROM vbap INTO TABLE @DATA(lt_vbap)
+          FOR ALL ENTRIES IN @lt_vbfa
+          WHERE vbeln = @lt_vbfa-vbelv.
+
+    ENDIF.
+  ENDIF.
+
+  ls_excel2-category     = 'CATEGORY 1'.
+  ls_excel2-product_line = 'HORIZONTAL CIRCULATION'.
+  APPEND ls_excel2 TO lt_excel2.
+  CLEAR ls_excel2.
+
+  ls_excel2-category     = 'CATEGORY 1'.
+  ls_excel2-product_line = 'MINI ROTARY'.
+  APPEND ls_excel2 TO lt_excel2.
+  CLEAR ls_excel2.
+
+  ls_excel2-category     = 'CATEGORY 1'.
+  ls_excel2-product_line = 'MS INDOOR TOWER'.
+  APPEND ls_excel2 TO lt_excel2.
+  CLEAR ls_excel2.
+
+  ls_excel2-category     = 'CATEGORY 1'.
+  ls_excel2-product_line = 'MSOPEN TOWER'.
+  APPEND ls_excel2 TO lt_excel2.
+  CLEAR ls_excel2.
+
+  ls_excel2-category     = 'CATEGORY 1'.
+  ls_excel2-product_line = 'RCC BKT TOWER'.
+  APPEND ls_excel2 TO lt_excel2.
+  CLEAR ls_excel2.
+
+  ls_excel2-category     = 'CATEGORY 1'.
+  ls_excel2-product_line = 'MINI ROTARY'.
+  APPEND ls_excel2 TO lt_excel2.
+  CLEAR ls_excel2.
+
+  ls_excel2-category     = 'CATEGORY 2'.
+  ls_excel2-product_line = 'SHUTTLE PARKING'.
+  APPEND ls_excel2 TO lt_excel2.
+  CLEAR ls_excel2.
+
+  ls_excel2-category     = 'CATEGORY 2'.
+  ls_excel2-product_line = '1 IN PIT PUZZLE'.
+  APPEND ls_excel2 TO lt_excel2.
+  CLEAR ls_excel2.
+
+  ls_excel2-category     = 'CATEGORY 2'.
+  ls_excel2-product_line = '2&3 IN PIT PUZZLE'.
+  APPEND ls_excel2 TO lt_excel2.
+  CLEAR ls_excel2.
+
+  ls_excel2-category     = 'CATEGORY 2'.
+  ls_excel2-product_line = 'OG PUZZLE'.
+  APPEND ls_excel2 TO lt_excel2.
+  CLEAR ls_excel2.
+
+  ls_excel2-category     = 'CATEGORY 3'.
+  ls_excel2-product_line = '1 IN PIT PUZZLE'.
+  APPEND ls_excel2 TO lt_excel2.
+  CLEAR ls_excel2.
+
+  ls_excel2-category     = 'CATEGORY 3'.
+  ls_excel2-product_line = '2DS PIT'.
+  APPEND ls_excel2 TO lt_excel2.
+  CLEAR ls_excel2.
+
+  ls_excel2-category     = 'CATEGORY 3'.
+  ls_excel2-product_line = '3LD OG'.
+  APPEND ls_excel2 TO lt_excel2.
+  CLEAR ls_excel2.
+
+  ls_excel2-category     = 'CATEGORY 3'.
+  ls_excel2-product_line = '3LD PIT'.
+  APPEND ls_excel2 TO lt_excel2.
+  CLEAR ls_excel2.
+
+  ls_excel2-category     = 'CATEGORY 3'.
+  ls_excel2-product_line = 'CANTILEVER'.
+  APPEND ls_excel2 TO lt_excel2.
+  CLEAR ls_excel2.
+
+  ls_excel2-category     = 'CATEGORY 3'.
+  ls_excel2-product_line = 'CAR HOIST'.
+  APPEND ls_excel2 TO lt_excel2.
+  CLEAR ls_excel2.
+
+  ls_excel2-category     = 'CATEGORY 3'.
+  ls_excel2-product_line = 'AMC & Spare Parts'.
+  APPEND ls_excel2 TO lt_excel2.
+  CLEAR ls_excel2.
+
+  ls_excel2-category     = 'CATEGORY 3'.
+  ls_excel2-product_line = 'ETP'.
+  APPEND ls_excel2 TO lt_excel2.
+  CLEAR ls_excel2.
+
+  ls_excel2-category     = 'CATEGORY 3'.
+  ls_excel2-product_line = 'HOGP'.
+  APPEND ls_excel2 TO lt_excel2.
+  CLEAR ls_excel2.
+
+  ls_excel2-category     = 'CATEGORY 3'.
+  ls_excel2-product_line = 'HPP'.
+  APPEND ls_excel2 TO lt_excel2.
+  CLEAR ls_excel2.
+
+  ls_excel2-category     = 'CATEGORY 3'.
+  ls_excel2-product_line = 'HTP'.
+  APPEND ls_excel2 TO lt_excel2.
+  CLEAR ls_excel2.
+
+  ls_excel2-category     = 'CATEGORY 3'.
+  ls_excel2-product_line = 'OG PUZZLE'.
+  APPEND ls_excel2 TO lt_excel2.
+  CLEAR ls_excel2.
+
+  ls_excel2-category     = 'CATEGORY 3'.
+  ls_excel2-product_line = 'SUSPENDED PALLET'.
+  APPEND ls_excel2 TO lt_excel2.
+  CLEAR ls_excel2.
+
+  ls_excel2-category     = 'CATEGORY 4'.
+  ls_excel2-product_line = 'HYD CAR LIFT'.
+  APPEND ls_excel2 TO lt_excel2.
+  CLEAR ls_excel2.
+
+  ls_excel2-category     = 'CATEGORY 4'.
+  ls_excel2-product_line = 'TR. CAR LIFT'.
+  APPEND ls_excel2 TO lt_excel2.
+  CLEAR ls_excel2.
+
+  ls_excel2-category     = 'CATEGORY 6'.
+  ls_excel2-product_line = 'CIVIL WORK'.
+  APPEND ls_excel2 TO lt_excel2.
+  CLEAR ls_excel2.
+
+  ls_excel2-category     = ''.
+  ls_excel2-product_line = 'Total'.
+  APPEND ls_excel2 TO lt_excel2.
+  CLEAR ls_excel2.
+
+  LOOP AT lt_vbrk INTO DATA(ls_vbrk_1).
+    READ TABLE lt_vbfa INTO DATA(ls_vbfa_1) WITH KEY vbeln = ls_vbrk_1-vbeln.
+    IF sy-subrc = 0.
+      READ TABLE lt_vbap INTO DATA(ls_vbap) WITH KEY vbeln = ls_vbfa_1-vbelv.
+      IF sy-subrc = 0.
+        LOOP AT lt_excel2 INTO ls_excel2 WHERE product_line = ls_vbap-zproduct .
+
+          IF ls_vbrk_1-fkdat BETWEEN start_date AND end_date.   " get monthly details
+            IF ls_excel2-product_line = 'HORIZONTAL CIRCULATION'.
+              ls_excel2-amt_lakh_mon = ls_excel2-amt_lakh_mon + ls_vbrk_1-netwr.
+            ELSEIF ls_excel2-product_line = 'MINI ROTARY'.
+              ls_excel2-amt_lakh_mon = ls_excel2-amt_lakh_mon + ls_vbrk_1-netwr.
+            ELSEIF  ls_excel2-product_line = 'MS INDOOR TOWER'.
+              ls_excel2-amt_lakh_mon = ls_excel2-amt_lakh_mon + ls_vbrk_1-netwr.
+            ELSEIF ls_excel2-product_line = 'MSOPEN TOWER'.
+              ls_excel2-amt_lakh_mon = ls_excel2-amt_lakh_mon + ls_vbrk_1-netwr.
+            ELSEIF ls_excel2-product_line = 'RCC BKT TOWER'.
+              ls_excel2-amt_lakh_mon = ls_excel2-amt_lakh_mon + ls_vbrk_1-netwr.
+            ELSEIF ls_excel2-product_line = 'MINI ROTARY'.
+              ls_excel2-amt_lakh_mon = ls_excel2-amt_lakh_mon + ls_vbrk_1-netwr.
+            ELSEIF ls_excel2-product_line = 'SHUTTLE PARKING'.
+              ls_excel2-amt_lakh_mon = ls_excel2-amt_lakh_mon + ls_vbrk_1-netwr.
+            ELSEIF ls_excel2-product_line = '1 IN PIT PUZZLE'.
+              ls_excel2-amt_lakh_mon = ls_excel2-amt_lakh_mon + ls_vbrk_1-netwr.
+            ELSEIF ls_excel2-product_line = '2&3 IN PIT PUZZLE'.
+              ls_excel2-amt_lakh_mon = ls_excel2-amt_lakh_mon + ls_vbrk_1-netwr.
+            ELSEIF ls_excel2-product_line = 'OG PUZZLE'.
+              ls_excel2-amt_lakh_mon = ls_excel2-amt_lakh_mon +  ls_vbrk_1-netwr.
+            ELSEIF ls_excel2-product_line = '1 IN PIT PUZZLE'.
+              ls_excel2-amt_lakh_mon = ls_excel2-amt_lakh_mon + ls_vbrk_1-netwr.
+            ELSEIF ls_excel2-product_line = '2DS PIT'.
+              ls_excel2-amt_lakh_mon = ls_excel2-amt_lakh_mon + ls_vbrk_1-netwr.
+            ELSEIF ls_excel2-product_line = '3LD OG'.
+              ls_excel2-amt_lakh_mon = ls_excel2-amt_lakh_mon + ls_vbrk_1-netwr.
+            ELSEIF ls_excel2-product_line = '3LD PIT'.
+              ls_excel2-amt_lakh_mon = ls_excel2-amt_lakh_mon + ls_vbrk_1-netwr.
+            ELSEIF ls_excel2-product_line = 'CANTILEVER'.
+              ls_excel2-amt_lakh_mon = ls_excel2-amt_lakh_mon + ls_vbrk_1-netwr.
+            ELSEIF ls_excel2-product_line = 'CAR HOIST'.
+              ls_excel2-amt_lakh_mon = ls_excel2-amt_lakh_mon + ls_vbrk_1-netwr.
+            ELSEIF ls_excel2-product_line = 'AMC & Spare Parts'.
+              ls_excel2-amt_lakh_mon = ls_excel2-amt_lakh_mon + ls_vbrk_1-netwr.
+            ELSEIF ls_excel2-product_line = 'ETP'.
+              ls_excel2-amt_lakh_mon = ls_excel2-amt_lakh_mon + ls_vbrk_1-netwr.
+            ELSEIF ls_excel2-product_line = 'HOGP'.
+              ls_excel2-amt_lakh_mon = ls_excel2-amt_lakh_mon + ls_vbrk_1-netwr.
+            ELSEIF ls_excel2-product_line = 'HPP'.
+              ls_excel2-amt_lakh_mon = ls_excel2-amt_lakh_mon + ls_vbrk_1-netwr.
+            ELSEIF ls_excel2-product_line = 'HTP'.
+              ls_excel2-amt_lakh_mon = ls_excel2-amt_lakh_mon + ls_vbrk_1-netwr.
+            ELSEIF ls_excel2-product_line = 'OG PUZZLE'.
+              ls_excel2-amt_lakh_mon = ls_excel2-amt_lakh_mon + ls_vbrk_1-netwr.
+            ELSEIF ls_excel2-product_line = 'SUSPENDED PALLET'.
+              ls_excel2-amt_lakh_mon = ls_excel2-amt_lakh_mon + ls_vbrk_1-netwr.
+            ELSEIF ls_excel2-product_line = 'HYD CAR LIFT'.
+              ls_excel2-amt_lakh_mon = ls_excel2-amt_lakh_mon + ls_vbrk_1-netwr.
+            ELSEIF ls_excel2-product_line = 'TR. CAR LIFT'.
+              ls_excel2-amt_lakh_mon = ls_excel2-amt_lakh_mon + ls_vbrk_1-netwr.
+            ELSEIF ls_excel2-product_line = 'CIVIL WORK'.
+              ls_excel2-amt_lakh_mon = ls_excel2-amt_lakh_mon + ls_vbrk_1-netwr.
+            ENDIF.
+
+            MODIFY lt_excel2 FROM ls_excel2 TRANSPORTING amt_lakh_mon.
+          ENDIF.
+
+          IF ls_vbrk_1-fkdat BETWEEN start_date_y AND end_date_y. " Get yearly data
+            IF ls_excel2-product_line = 'HORIZONTAL CIRCULATION'.
+              ls_excel2-amt_lakh_year = ls_excel2-amt_lakh_year + ls_vbrk_1-netwr.
+            ELSEIF ls_excel2-product_line = 'MINI ROTARY'.
+              ls_excel2-amt_lakh_year = ls_excel2-amt_lakh_year + ls_vbrk_1-netwr.
+            ELSEIF  ls_excel2-product_line = 'MS INDOOR TOWER'.
+              ls_excel2-amt_lakh_year = ls_excel2-amt_lakh_year + ls_vbrk_1-netwr.
+            ELSEIF ls_excel2-product_line = 'MSOPEN TOWER'.
+              ls_excel2-amt_lakh_year = ls_excel2-amt_lakh_year + ls_vbrk_1-netwr.
+            ELSEIF ls_excel2-product_line = 'RCC BKT TOWER'.
+              ls_excel2-amt_lakh_year = ls_excel2-amt_lakh_year + ls_vbrk_1-netwr.
+            ELSEIF ls_excel2-product_line = 'MINI ROTARY'.
+              ls_excel2-amt_lakh_year = ls_excel2-amt_lakh_year + ls_vbrk_1-netwr.
+            ELSEIF ls_excel2-product_line = 'SHUTTLE PARKING'.
+              ls_excel2-amt_lakh_year = ls_excel2-amt_lakh_year + ls_vbrk_1-netwr.
+            ELSEIF ls_excel2-product_line = '1 IN PIT PUZZLE'.
+              ls_excel2-amt_lakh_year = ls_excel2-amt_lakh_year + ls_vbrk_1-netwr.
+            ELSEIF ls_excel2-product_line = '2&3 IN PIT PUZZLE'.
+              ls_excel2-amt_lakh_year = ls_excel2-amt_lakh_year + ls_vbrk_1-netwr.
+            ELSEIF ls_excel2-product_line = 'OG PUZZLE'.
+              ls_excel2-amt_lakh_year = ls_excel2-amt_lakh_year +  ls_vbrk_1-netwr.
+            ELSEIF ls_excel2-product_line = '1 IN PIT PUZZLE'.
+              ls_excel2-amt_lakh_year = ls_excel2-amt_lakh_year + ls_vbrk_1-netwr.
+            ELSEIF ls_excel2-product_line = '2DS PIT'.
+              ls_excel2-amt_lakh_year = ls_excel2-amt_lakh_year + ls_vbrk_1-netwr.
+            ELSEIF ls_excel2-product_line = '3LD OG'.
+              ls_excel2-amt_lakh_year = ls_excel2-amt_lakh_year + ls_vbrk_1-netwr.
+            ELSEIF ls_excel2-product_line = '3LD PIT'.
+              ls_excel2-amt_lakh_year = ls_excel2-amt_lakh_year + ls_vbrk_1-netwr.
+            ELSEIF ls_excel2-product_line = 'CANTILEVER'.
+              ls_excel2-amt_lakh_year = ls_excel2-amt_lakh_year + ls_vbrk_1-netwr.
+            ELSEIF ls_excel2-product_line = 'CAR HOIST'.
+              ls_excel2-amt_lakh_year = ls_excel2-amt_lakh_year + ls_vbrk_1-netwr.
+            ELSEIF ls_excel2-product_line = 'AMC & Spare Parts'.
+              ls_excel2-amt_lakh_year = ls_excel2-amt_lakh_year + ls_vbrk_1-netwr.
+            ELSEIF ls_excel2-product_line = 'ETP'.
+              ls_excel2-amt_lakh_year = ls_excel2-amt_lakh_year + ls_vbrk_1-netwr.
+            ELSEIF ls_excel2-product_line = 'HOGP'.
+              ls_excel2-amt_lakh_year = ls_excel2-amt_lakh_year + ls_vbrk_1-netwr.
+            ELSEIF ls_excel2-product_line = 'HPP'.
+              ls_excel2-amt_lakh_year = ls_excel2-amt_lakh_year + ls_vbrk_1-netwr.
+            ELSEIF ls_excel2-product_line = 'HTP'.
+              ls_excel2-amt_lakh_year = ls_excel2-amt_lakh_year + ls_vbrk_1-netwr.
+            ELSEIF ls_excel2-product_line = 'OG PUZZLE'.
+              ls_excel2-amt_lakh_year = ls_excel2-amt_lakh_year + ls_vbrk_1-netwr.
+            ELSEIF ls_excel2-product_line = 'SUSPENDED PALLET'.
+              ls_excel2-amt_lakh_year = ls_excel2-amt_lakh_year + ls_vbrk_1-netwr.
+            ELSEIF ls_excel2-product_line = 'HYD CAR LIFT'.
+              ls_excel2-amt_lakh_year = ls_excel2-amt_lakh_year + ls_vbrk_1-netwr.
+            ELSEIF ls_excel2-product_line = 'TR. CAR LIFT'.
+              ls_excel2-amt_lakh_year = ls_excel2-amt_lakh_year + ls_vbrk_1-netwr.
+            ELSEIF ls_excel2-product_line = 'CIVIL WORK'.
+              ls_excel2-amt_lakh_year = ls_excel2-amt_lakh_year + ls_vbrk_1-netwr.
+            ENDIF.
+
+            MODIFY lt_excel2 FROM ls_excel2 TRANSPORTING amt_lakh_year.
+          ENDIF.
+
+        ENDLOOP.
+
+      ENDIF.
+    ENDIF.
+  ENDLOOP.
+
+  DATA: total_amt_monthly TYPE vbrk-netwr.
+  DATA: total_amt_yearly TYPE vbrk-netwr.
+  DATA: g_total_amt_monthly TYPE vbrk-netwr.
+
+  " update total amount for monthly and yearly
+  CLEAR: total_amt_monthly , total_amt_yearly.
+  LOOP AT lt_excel2 INTO ls_excel2.
+    total_amt_monthly = total_amt_monthly + ls_excel2-amt_lakh_mon.
+    total_amt_yearly = total_amt_yearly + ls_excel2-amt_lakh_year.
+    IF ls_excel2-product_line = 'Total'.
+      ls_excel2-amt_lakh_mon = total_amt_monthly.
+      ls_excel2-amt_lakh_year = total_amt_yearly.
+    ENDIF.
+    MODIFY lt_excel2 FROM ls_excel2 TRANSPORTING amt_lakh_mon amt_lakh_year.
+  ENDLOOP.
+
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form GET_DATA_INTERBRANCH
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM get_data_interbranch .
+
+  IF s_fkdat IS NOT INITIAL.
+    SELECT vbeln FROM zinv_against_con INTO TABLE @DATA(lt_zinv_against_con)
+    WHERE checkbox NE 'X' AND fkdat IN @s_fkdat.
+  ELSE.
+    SELECT vbeln FROM zinv_against_con INTO TABLE @DATA(lt_zinv_against_con1)
+      WHERE checkbox NE 'X'.
+    lt_zinv_against_con = lt_zinv_against_con1.
+  ENDIF.
+
+  SELECT vbeln,fkdat,kunag,xblnr,netwr FROM vbrk INTO TABLE @DATA(lt_vbrk)
+    FOR ALL ENTRIES IN @lt_zinv_against_con
+    WHERE vbeln = @lt_zinv_against_con-vbeln.
+
+
+  IF lt_vbrk IS NOT INITIAL.
+    SELECT vbeln, vbtyp_v FROM vbfa INTO TABLE @DATA(lt_vbfa)
+      FOR ALL ENTRIES IN @lt_vbrk
+      WHERE vbeln = @lt_vbrk-vbeln
+      AND vbtyp_v = 'G'.
+
+    IF lt_vbfa IS NOT INITIAL.
+      SELECT vbeln, kunnr FROM vbak INTO TABLE @DATA(lt_vbak)
+        FOR ALL ENTRIES IN @lt_vbfa
+        WHERE vbeln = @lt_vbfa-vbeln.
+      IF lt_vbak IS NOT INITIAL.
+        SELECT partner,name_org4 FROM but000 INTO TABLE @DATA(lt_but000)
+          FOR ALL ENTRIES IN @lt_vbak
+          WHERE partner = @lt_vbak-kunnr.
+      ENDIF.
+    ENDIF.
+  ENDIF.
+
+  LOOP AT lt_zinv_against_con INTO DATA(ls_zinv_against_con).
+
+    ls_interbranch-vbeln = ls_zinv_against_con-vbeln.
+    READ TABLE lt_vbrk INTO DATA(ls_vbrk) WITH KEY vbeln = ls_zinv_against_con-vbeln.
+    IF sy-subrc = 0.
+      ls_interbranch-fkdat = ls_vbrk-fkdat.   " Date
+      ls_interbranch-kunag = ls_vbrk-kunag.   " billing to branch
+      ls_interbranch-xblnr = ls_vbrk-xblnr.   " bill/DC no
+      ls_interbranch-netwr = ls_vbrk-netwr.   "basic value
+
+      lv_date1 = ls_vbrk-fkdat.
+      CALL FUNCTION 'GM_GET_FISCAL_YEAR'
+        EXPORTING
+          i_date = lv_date1   " Date
+          i_fyv  = 'V3'
+        IMPORTING
+          e_fy   = lv_fin_year.
+      IF sy-subrc <> 0.
+* Implement suitable error handling here
+      ENDIF.
+
+      ls_interbranch-year = lv_fin_year.     " fian year
+
+      READ TABLE lt_vbfa INTO DATA(ls_vbfa) WITH KEY vbeln = ls_vbrk-vbeln.
+      IF sy-subrc = 0.
+        READ TABLE lt_vbak INTO DATA(ls_vbak) WITH KEY vbeln = ls_vbfa-vbeln.
+        IF sy-subrc = 0.
+          READ TABLE lt_but000 INTO DATA(ls_but000) WITH KEY partner = ls_vbak-kunnr.
+          IF sy-subrc = 0.
+            ls_interbranch-name_org4 = ls_but000-name_org4.  " site
+          ENDIF.
+        ENDIF.
+      ENDIF.
+    ENDIF.
+
+    APPEND ls_interbranch TO lt_interbranch.
+    CLEAR ls_interbranch.
+  ENDLOOP.
+  SORT lt_interbranch BY vbeln ASCENDING.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form GET_DATA_BILLWISE
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM get_data_billwise .
+  IF s_fkdat IS NOT INITIAL.
+    SELECT * FROM vbrk INTO TABLE @DATA(lt_vbrk)
+      WHERE fkdat IN @s_fkdat
+      AND fkart = 'ZPCR'
+*      AND FKART = 'ZPIR'
+*      AND FKTYP = 'D'
+      AND vtweg = '10'
+      AND vkorg IN ('1100','1200')
+      AND fksto NE 'X'.
+  ELSE.
+    SELECT * FROM vbrk INTO TABLE @DATA(lt_vbrk1)
+         WHERE "FKDAT IN @S_FKDAT
+          fkart = 'ZPCR'
+*          FKART = 'ZPIR'
+*         AND FKTYP = 'D'
+         AND vtweg = '10'
+         AND vkorg IN ('1100','1200')
+         AND fksto NE 'X'.
+
+    lt_vbrk = lt_vbrk1.
+  ENDIF.
+
+
+  IF lt_vbrk IS NOT INITIAL.
+
+    SELECT vbeln, spart FROM vbrp INTO TABLE @DATA(lt_vbrp)
+      FOR ALL ENTRIES IN @lt_vbrk
+      WHERE vbeln = @lt_vbrk-vbeln.
+
+    IF lt_vbrk IS NOT INITIAL.
+
+      SELECT * FROM t005u INTO TABLE @DATA(lt_t005u)
+        FOR ALL ENTRIES IN @lt_vbrk
+        WHERE spras = 'E' AND land1 = 'IN' AND bland = @lt_vbrk-regio.
+
+      SELECT kunnr, name1 FROM kna1 INTO TABLE @DATA(lt_kna1)
+        FOR ALL ENTRIES IN @lt_vbrk
+        WHERE kunnr = @lt_vbrk-kunrg.
+
+      SELECT vbelv,vbeln, vbtyp_v FROM vbfa INTO TABLE @DATA(lt_vbfa)
+        FOR ALL ENTRIES IN @lt_vbrk
+        WHERE vbeln = @lt_vbrk-vbeln
+        AND vbtyp_v = 'G'.
+
+      SELECT vbeln, fplnr FROM fpla INTO TABLE @DATA(lt_fpla)
+        FOR ALL ENTRIES IN @lt_vbfa
+        WHERE vbeln = @lt_vbfa-vbelv.
+
+      SELECT fplnr,tetxt,fkdat FROM fplt INTO TABLE @DATA(lt_fplt)
+        FOR ALL ENTRIES IN @lt_fpla
+        WHERE fplnr =  @lt_fpla-fplnr
+        AND fkdat IN @s_fkdat.
+
+      SELECT * FROM tvtbt INTO TABLE @DATA(lt_tvtbt)
+        FOR ALL ENTRIES IN @lt_fplt
+         WHERE tetbe = @lt_fplt-tetxt
+        AND spras = 'E'.
+
+      SELECT vbeln, netwr, zcategory FROM vbap INTO TABLE @DATA(lt_vbap)
+        FOR ALL ENTRIES IN @lt_vbfa
+        WHERE vbeln = @lt_vbfa-vbelv.      " fetch all 1 to 6 category data
+
+      SELECT bname,persnumber FROM usr21 INTO TABLE @DATA(lt_usr21)
+        FOR ALL ENTRIES IN @lt_vbrk
+        WHERE bname  = @lt_vbrk-ernam.     " fetch logic for concern name coumn
+
+      IF lt_usr21 IS NOT INITIAL.
+        SELECT persnumber, name_text FROM adrp INTO TABLE @DATA(lt_adrp)
+          FOR ALL ENTRIES IN @lt_usr21
+          WHERE persnumber = @lt_usr21-persnumber.
+      ENDIF.
+
+    ENDIF.
+  ENDIF.
+
+  DATA lv_mon_name TYPE char15.
+  DATA lv_reg_name TYPE char15.
+
+  LOOP AT lt_vbrk INTO DATA(ls_vbrk).
+
+    ls_billwise-vbeln     = ls_vbrk-vbeln.    "INT REF NO
+    ls_billwise-tax_amt   = ls_vbrk-mwsbk.    "tax amount
+    READ TABLE lt_t005u INTO DATA(ls_t005u) WITH KEY bland = ls_vbrk-regio.
+    IF sy-subrc = 0.
+      ls_billwise-regio     = ls_t005u-bezei.    "ISSUING STATE
+    ENDIF.
+    SELECT SINGLE bztxt INTO lv_reg_name FROM t171t WHERE bzirk EQ ls_vbrk-bzirk AND spras EQ sy-langu.
+
+    ls_billwise-bzirk     = lv_reg_name.      "REGION
+    ls_billwise-cust_type = 'PRIVATE'.        " PRIVATE
+    ls_billwise-xblnr     = ls_vbrk-xblnr.    " TAX INV NO
+    ls_billwise-fkdat     = ls_vbrk-fkdat.    " DATE
+
+    SELECT SINGLE ktx INTO lv_mon_name FROM t247 WHERE mnr EQ ls_billwise-fkdat+4(2) AND spras EQ sy-langu.
+    CONCATENATE lv_mon_name '-' ls_billwise-fkdat+0(4) INTO ls_billwise-mon_year.     " Mon_Year
+    CONCATENATE lv_mon_name '-' ls_billwise-fkdat+0(4) INTO ls_billwise-mon_year1.     " Mon_Year1
+
+*    LS_EXCEL-FKDAT     = LS_VBRK-FKDAT.    " sales type
+
+    READ TABLE lt_vbfa INTO DATA(ls_vbfa) WITH KEY vbeln = ls_vbrk-vbeln.
+    IF sy-subrc = 0.
+      ls_billwise-con_no = ls_vbfa-vbelv. " contract no
+
+      LOOP AT lt_vbap INTO DATA(ls_vbap) WHERE vbeln = ls_vbfa-vbelv.
+        IF ls_vbap-zcategory = 'CATEGORY 1'.
+          ls_billwise-category1 = ls_billwise-category1 + ls_vbap-netwr.
+        ELSEIF ls_vbap-zcategory = 'CATEGORY 2'.
+          ls_billwise-category2 = ls_billwise-category2 + ls_vbap-netwr.
+        ELSEIF ls_vbap-zcategory = 'CATEGORY 3'.
+          ls_billwise-category3 = ls_billwise-category3 + ls_vbap-netwr.
+        ELSEIF ls_vbap-zcategory = 'CATEGORY 4'.
+          ls_billwise-category4 = ls_billwise-category4 + ls_vbap-netwr.
+        ELSEIF ls_vbap-zcategory = 'CATEGORY 5'.
+          ls_billwise-category5 = ls_billwise-category5 + ls_vbap-netwr.
+        ELSEIF ls_vbap-zcategory = 'CATEGORY 6'.
+          ls_billwise-category6  = ls_billwise-category6 + ls_vbap-netwr.
+        ENDIF.
+      ENDLOOP.
+
+    ENDIF.
+
+    READ TABLE lt_usr21 INTO DATA(ls_usr21) WITH KEY bname  = ls_vbrk-ernam.
+    IF sy-subrc = 0.
+      READ TABLE lt_adrp INTO DATA(ls_adrp) WITH KEY persnumber = ls_usr21-persnumber.
+      IF sy-subrc = 0.
+        ls_billwise-con_per  = ls_adrp-name_text.    " con person name
+      ENDIF.
+    ENDIF.
+
+    READ TABLE lt_kna1 INTO DATA(ls_kna1) WITH KEY kunnr = ls_vbrk-kunrg.
+    IF sy-subrc = 0.
+      ls_billwise-cust_name = ls_kna1-name1.    "customer name
+    ENDIF.
+
+    ls_billwise-netwr = ls_vbrk-netwr.    "basic amount
+    ls_billwise-total = ls_vbrk-netwr.    "Total
+
+    ls_billwise-tot_amt = ls_vbrk-mwsbk + ls_vbrk-netwr. "total amt incl GST
+
+    APPEND ls_billwise TO lt_billwise.
+    CLEAR ls_billwise.
+  ENDLOOP.
+
+  " login assing for sales_type in billwise report
+  DATA lv_tabix TYPE sy-tabix.
+  DATA lv_text TYPE char15.
+  LOOP AT lt_billwise INTO ls_billwise.
+    LOOP AT lt_fplt INTO DATA(ls_fplt) WHERE fkdat = ls_billwise-fkdat."FPLNR = LS_FPLA-FPLNR .
+      READ TABLE lt_tvtbt INTO DATA(ls_tvtbt) WITH KEY tetbe = ls_fplt-tetxt.
+
+      IF sy-subrc = 0.
+        lv_tabix = lv_tabix + 1.
+        lv_text  = ls_tvtbt-tebez.
+
+        IF lv_tabix GE '2'.
+          CONCATENATE  ls_billwise-sales_type lv_text INTO ls_billwise-sales_type SEPARATED BY '/'.
+        ELSEIF lv_tabix = '1'.
+          ls_billwise-sales_type = ls_tvtbt-tebez.
+        ENDIF.
+      ENDIF.
+
+    ENDLOOP.
+    ls_billwise-sales_type1 = ls_billwise-sales_type.
+    ls_billwise-work = ls_billwise-sales_type.
+
+    MODIFY lt_billwise FROM ls_billwise TRANSPORTING sales_type sales_type1 work.
+    CLEAR: lv_tabix,lv_text.
+  ENDLOOP.
+
+  LOOP AT lt_billwise INTO ls_billwise.
+    READ TABLE lt_vbrk INTO DATA(ls_vbrk1) WITH KEY vbeln = ls_billwise-vbeln.
+    IF sy-subrc = 0.
+      IF ls_vbrk1-vkorg = '1100'.
+        READ TABLE lt_vbrp INTO DATA(ls_vbrp) WITH KEY vbeln = ls_vbrk-vbeln.
+        IF sy-subrc = 0.
+          IF ls_vbrp-spart = '01'.
+            MOVE-CORRESPONDING ls_billwise TO ls_1100_01.
+            APPEND ls_1100_01 TO lt_1100_01.
+            CLEAR: ls_1100_01,ls_billwise.
+
+          ELSEIF ls_vbrp-spart = '02'.
+            MOVE-CORRESPONDING ls_billwise TO ls_1100_02.
+            APPEND ls_1100_02 TO lt_1100_02.
+            CLEAR: ls_1100_02,ls_billwise.
+          ENDIF.
+        ENDIF.
+
+      ELSEIF ls_vbrk1-vkorg = '1200'.
+
+        READ TABLE lt_vbrp INTO DATA(ls_vbrp1) WITH KEY vbeln = ls_vbrk-vbeln.
+        IF sy-subrc = 0.
+          IF ls_vbrp1-spart = '01'.
+            MOVE-CORRESPONDING ls_billwise TO ls_1100_01.
+            APPEND ls_1100_01 TO lt_1200_01.
+            CLEAR: ls_1100_01,ls_billwise.
+
+          ELSEIF ls_vbrp1-spart = '02'.
+            MOVE-CORRESPONDING ls_billwise TO ls_1100_02.
+            APPEND ls_1100_02 TO lt_1200_02.
+            CLEAR: ls_1100_02,ls_billwise.
+          ENDIF.
+        ENDIF.
+
+      ENDIF.
+    ENDIF.
+  ENDLOOP.
+
+  "requires sales org & division wise data Eg. 1100/01, 1100/02, 1200/01, 1200/02
+  IF lt_1100_01 IS NOT INITIAL OR lt_1100_02 IS NOT INITIAL OR lt_1200_01 IS NOT INITIAL OR lt_1200_01 IS NOT INITIAL.
+    REFRESH lt_billwise.
+
+    MOVE-CORRESPONDING lt_1100_01 TO lt_billwise.
+
+    IF lt_1100_02 IS NOT INITIAL.
+      LOOP AT lt_1100_02 INTO DATA(ls_1100_02).
+        CLEAR ls_billwise.
+        MOVE-CORRESPONDING ls_1100_02 TO ls_billwise.
+        APPEND ls_billwise TO lt_billwise.
+        CLEAR ls_1100_02.
+      ENDLOOP.
+    ENDIF.
+    IF lt_1200_01 IS NOT INITIAL.
+      LOOP AT lt_1200_01 INTO DATA(ls_1200_01).
+        CLEAR ls_billwise.
+        MOVE-CORRESPONDING ls_1200_01 TO ls_billwise.
+        APPEND ls_billwise TO lt_billwise.
+        CLEAR ls_1200_01.
+      ENDLOOP.
+    ENDIF.
+    IF lt_1200_02 IS NOT INITIAL.
+      LOOP AT lt_1200_02 INTO DATA(ls_1200_02).
+        CLEAR ls_billwise.
+        MOVE-CORRESPONDING ls_1200_02 TO ls_billwise.
+        APPEND ls_billwise TO lt_billwise.
+        CLEAR ls_1200_02.
+      ENDLOOP.
+    ENDIF.
+
+  ENDIF.
+
+
+
+
+ENDFORM.
