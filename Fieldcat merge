@@ -1,0 +1,19 @@
+Fieldcat merge
+
+  CALL FUNCTION 'REUSE_ALV_FIELDCATALOG_MERGE'
+    EXPORTING
+      i_program_name         = sy-repid
+      i_internal_tabname     = 'TY_OUTPUT'
+      i_inclname             = sy-repid
+      i_bypassing_buffer     = 'X'
+      i_buffer_active        = 'X'
+    CHANGING
+      ct_fieldcat            = it_fcat
+    EXCEPTIONS
+      inconsistent_interface = 1
+      program_error          = 2
+      OTHERS                 = 3.
+  IF sy-subrc <> 0.
+    MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+            WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+  ENDIF.
