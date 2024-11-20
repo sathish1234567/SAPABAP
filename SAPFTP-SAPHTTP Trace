@@ -1,0 +1,61 @@
+Symptom
+SAP Support consultant requests a trace for RFC destination SAPFTP, SAPFTPA or SAPHTTP, SAPHTTPA.
+
+Environment
+SAP Basis release independent
+
+Cause
+Tracing for SAPFTP or SAPHTTP is not activated by default. For troubleshooting, manual trace activation is necessary.
+
+Additional information for SAPFTP and SAPHTTP:
+
+SAPFTP is a generated RFC destination, which starts from frontend PC.
+   FTP_2.jpg
+
+Program sapftp.exe is installed together with SAPGUI. It is located at folder C:\Program Files\SAP\FrontEnd\SAPgui by default.
+   FTP_1.jpg
+
+SAPFTPA is also a generated RFC destination, which starts from application server.
+FTPA_2.jpg
+
+Program sapftp is installed together with kernel, and it is located at the kernel folder.
+SAPHTTP/SAPHTTPA is alike to SAPFTP/SAPFTPA.
+Resolution
+IMPORTANT: Before enabling data tracing, go to transaction SE38, execute program RSFTP001 (for RFC destination SAPFTP/SAPFTPA) RSHTTP40 (for RFC destination SAPHTTP/SAPHTTPA) while setting the "Delete Trace" (either "x" or "X") to delete the trace.
+This is important in order to clear up older tracing information which might pollute the newly generated trace file, making it more difficult for the Support Engineer to pinpoint the desired information in the trace log.
+
+Go to transaction SM59 and open RFC destination SAPFTP/SAPFTPA or SAPHTTP/SAPHTTPA.
+
+Check "Set RFC trace" in tab "Special options".
+
+Reproduce the issue.
+
+Run report RSFTP001 (for SAPFTP/SAPFTPA) or report RSHTTP40 (for SAPHTTP/SAPHTTPA).
+
+Check the report results and find the line "Current working directory (location of dev_http)". Different directories may be shown, dependending on whether it's a front-end or applicaton server destination.
+
+Examples:
+RFC destinations SAPFTP/SAPHTTP, with "Start on Front-End Work Station" activation type: C:\Users\*****\Documents\SAP\SAP GUI"
+RFC destinations SAPFTPA/SAPHTTPA, with "Start on Application Server" activation type: D:\usr\sap\...\work (DIR_HOME) directory in transaction AL11
+
+ Open the directory referred to above in step 6 according to the corresponding RFC Destination and find dev_ftp, dev_rfc or RFC***** files(for saphttp, please find dev_http).
+
+Please send the mentioned trace files to SAP Support by attaching them to the case they're related to.
+
+IMPORTANT: After sending the trace files to SAP Support, please turn off the flag "Set RFC trace" in transaction SM59.
+This is important because leaving tracing enabled indefinitely will cause the trace log size to continue increasing, consuming storage space unnecessarily.
+See Also
+For more information, refer to the below SAP Notes:
+
+164203 - Problems with SAPHTTP
+93042 - Problems with SAPFTP
+Keywords
+SAPHTTP, SAPFTP, Trace, Log, GOS, KPRO, Content Server, Error, BC-SRV-COM-FTP, Knowledge Provider, SAPHTTPA, SAPFTPA
+
+References
+This document refers to
+SAP Note/KBA
+Component
+Title
+93042	BC-SRV-COM-FTP	Problems with SAPFTP	
+164203	BC-SRV-COM-FTP	Problems with SAPHTTP
