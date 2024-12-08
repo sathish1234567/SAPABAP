@@ -1,0 +1,77 @@
+
+*&---------------------------------------------------------------------*
+*& Report YSAT_XML
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT ysat_xml.
+DATA lv_string TYPE string.
+
+lv_string = |<?xml version="1.0" encoding="iso-8859-1" ?>| &&
+   |<CUSTOMERS>| &&
+     |<PERSON customer_id="1" first_name="Jan" last_name="krohn">| &&
+     |</PERSON>| &&
+     |<PERSON customer_id="2" first_name="Jan1" last_name="krohn1">| &&
+     |</PERSON>| &&
+   |</CUSTOMERS>|.
+
+TYPES: BEGIN OF ts_person,
+         cust_id(4)    TYPE c,
+         firstname(20) TYPE c,
+         lastname(20)  TYPE c,
+* ONE_STRING TYPE CHAR50,
+       END OF ts_person.
+
+DATA : it_data TYPE STANDARD TABLE OF ts_person,
+       wa_data TYPE ts_person.
+
+DATA: gt_result_xml TYPE abap_trans_resbind_tab,
+      gs_result_xml TYPE abap_trans_resbind.
+
+GET REFERENCE OF it_data INTO gs_result_xml-value.
+gs_result_xml-name = 'IPERSON'.
+APPEND gs_result_xml TO gt_result_xml.
+
+CALL TRANSFORMATION zxml   " xslt file above
+SOURCE XML lv_string
+RESULT (gt_result_xml).
+
+BREAK-POINT.
+
+
+Tcode STRANS:
+<xsl:transform xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xmlns:sap="http://www.sap.com/sapxsl" version="1.0">
+  <xsl:strip-space elements="*"/>
+  <xsl:template match="/">
+    <asx:abap xmlns:asx="http://www.sap.com/abapxml" version="1.0">
+      <asx:values>
+        <IPERSON>
+          <xsl:for-each select="/CUSTOMERS/PERSON">
+            <item>
+              <CUST_ID>
+                <xsl:value-of select="@customer_id"/>
+              </CUST_ID>
+              <FIRSTNAME>
+                <xsl:value-of select="@first_name"/>
+              </FIRSTNAME>
+              <LASTNAME>
+                <xsl:value-of select="@last_name"/>
+              </LASTNAME>
+            </item>
+          </xsl:for-each>
+        </IPERSON>
+      </asx:values>
+    </asx:abap>
+  </xsl:template>
+</xsl:transform>
+
+Source File Data:
+XML file :
+ <?xml version="1.0" encoding="iso-8859-1" ?>
+    <CUSTOMERS>
+      <PERSON customer_id="1" first_name="Jan" last_name="krohn">
+      </PERSON>
+      <PERSON customer_id="2" first_name="Jan1" last_name="krohn1">
+      </PERSON>
+    </CUSTOMERS>
+
