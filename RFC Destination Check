@@ -1,0 +1,5 @@
+      CALL METHOD cl_iuuc_repl_remote_facade=>alive_rfcconn
+        EXPORTING
+          iv_rfc_dest = iv_destination
+        RECEIVING
+          rv_is_alive = iv_live.
