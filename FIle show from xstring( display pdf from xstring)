@@ -1,0 +1,52 @@
+DATA: lv_xstring   TYPE xstring,
+      lt_bin_tab   TYPE STANDARD TABLE OF solix,
+      lv_size      TYPE i,
+      lv_url(4048),"       TYPE string,
+      lo_container TYPE REF TO cl_gui_custom_container,
+      lo_html      TYPE REF TO cl_gui_html_viewer.
+
+" Assume lv_xstring already contains your PDF data
+SELECT single * FROM zdhl_awb INTO @DATA(ls_zwb)
+         WHERE vbeln = '1620104999'.
+
+  lv_Xstring = ls_zwb-pdfdata.
+  " Convert XSTRING to binary table
+  CALL FUNCTION 'SCMS_XSTRING_TO_BINARY'
+    EXPORTING
+      buffer        = lv_xstring
+    IMPORTING
+      output_length = lv_size
+    TABLES
+      binary_tab    = lt_bin_tab.
+
+  " Save PDF temporarily on frontend
+  DATA lv_filename type string value 'C:\Temp\inline.pdf'.
+
+  CALL FUNCTION 'GUI_DOWNLOAD'
+    EXPORTING
+      bin_filesize = lv_size
+      filename     = lv_filename
+      filetype     = 'BIN'
+    TABLES
+      data_tab     = lt_bin_tab.
+
+  " Build file URL
+  CONCATENATE 'file:///' lv_filename INTO lv_url.
+
+  " Create container on screen 100 with element 'PDF_CONTAINER'
+  CALL SCREEN 100.
+
+MODULE status_0100 OUTPUT.
+  SET PF-STATUS 'ZST_100'.
+  IF lo_container IS INITIAL.
+    CREATE OBJECT lo_container
+      EXPORTING
+        container_name = 'PDF_CONTAINER'.
+    CREATE OBJECT lo_html
+      EXPORTING
+        parent = lo_container.
+    CALL METHOD lo_html->show_url
+      EXPORTING
+        url = lv_url.
+  ENDIF.
+ENDMODULE. 
